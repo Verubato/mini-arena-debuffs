@@ -9,6 +9,7 @@
 
 Libs\LibStub\LibStub.lua
 Libs\LibUIDropDownMenu\LibUIDropDownMenu.xml
+MiniFramework.lua
 Config.lua
 MiniArenaDebuffs.xml
 MiniArenaDebuffs.lua
