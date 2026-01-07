@@ -42,7 +42,7 @@ function M:CopyTable(src, dst)
 
 	for k, v in pairs(src) do
 		if type(v) == "table" then
-			dst[k] = CopyTable(v, dst[k])
+			dst[k] = M:CopyTable(v, dst[k])
 		elseif dst[k] == nil then
 			dst[k] = v
 		end
@@ -405,6 +405,8 @@ end
 function M:GetSavedVars(defaults)
 	local name = addonName .. "DB"
 	local vars = _G[name] or {}
+
+	_G[name] = vars
 
 	if defaults then
 		return M:CopyTable(defaults, vars)
