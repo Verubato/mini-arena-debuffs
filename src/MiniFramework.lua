@@ -184,9 +184,9 @@ function M:CreateEditBox(parent, numeric, labelText, width, getValue, setValue)
 
 	box:SetScript("OnEditFocusLost", Commit)
 
-	function box:MiniRefresh()
-		box:SetText(tostring(getValue()))
-		box:SetCursorPosition(0)
+	function box.MiniRefresh(boxSelf)
+		boxSelf:SetText(tostring(getValue()))
+		boxSelf:SetCursorPosition(0)
 	end
 
 	box:MiniRefresh()
@@ -362,8 +362,8 @@ function M:CreateSettingCheckbox(parent, setting)
 		GameTooltip:Hide()
 	end)
 
-	function checkbox:MiniRefresh()
-		checkbox:SetChecked(setting.Enabled())
+	function checkbox.MiniRefresh(chkSelf)
+		chkSelf:SetChecked(setting.Enabled())
 	end
 
 	AddControlForRefresh(parent, box)
