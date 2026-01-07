@@ -362,11 +362,11 @@ function M:CreateSettingCheckbox(parent, setting)
 		GameTooltip:Hide()
 	end)
 
-	function checkbox.MiniRefresh(chkSelf)
-		chkSelf:SetChecked(setting.Enabled())
+	function checkbox.MiniRefresh()
+		checkbox:SetChecked(setting.Enabled())
 	end
 
-	AddControlForRefresh(parent, box)
+	AddControlForRefresh(parent, checkbox)
 
 	return checkbox
 end
