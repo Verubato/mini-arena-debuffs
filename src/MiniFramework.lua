@@ -131,49 +131,63 @@ function M:WireTabNavigation(controls)
 	end
 end
 
-function M:CreateEditBox(parent, numeric, labelText, width, getValue, setValue)
-	local label = parent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	label:SetText(labelText)
+---Creates an edit box with a label using the specified options.
+---@param options EditboxOptions
+---@return table label
+---@return table checkbox
+function M:CreateEditBox(options)
+	if not options.Parent or not options.GetValue or not options.SetValue then
+		error("Invalid edit box options")
+	end
 
-	local box = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-	box:SetSize(width or 80, 20)
+	local label = options.Parent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	label:SetText(options.LabelText or "")
+
+	local box = CreateFrame("EditBox", nil, options.Parent, "InputBoxTemplate")
+	box:SetSize(options.EditBoxWidth or 80, options.EditBoxHeight or 20)
 	box:SetAutoFocus(false)
 
-	if numeric then
-		-- can't use SetNumeric(true) because it doesn't allow negatives
-		box:SetScript("OnTextChanged", function(boxSelf, userInput)
-			if not userInput then
-				return
-			end
+	if options.Numeric == true then
+		if options.AllowNegatives == true then
+			-- can't use SetNumeric(true) because it doesn't allow negatives
+			box:SetScript("OnTextChanged", function(boxSelf, userInput)
+				if not userInput then
+					return
+				end
 
-			local text = boxSelf:GetText()
+				local text = boxSelf:GetText()
 
-			-- allow: "", "-", "-123", "123"
-			if text == "" or text == "-" or text:match("^%-?%d+$") then
-				return
-			end
+				-- allow: "", "-", "-123", "123"
+				if text == "" or text == "-" or text:match("^%-?%d+$") then
+					return
+				end
 
-			-- strip invalid chars
-			text = text:gsub("[^%d%-]", "")
-			-- only one leading '-'
-			text = text:gsub("%-+", "-")
+				-- strip invalid chars
+				text = text:gsub("[^%d%-]", "")
+				-- only one leading '-'
+				text = text:gsub("%-+", "-")
 
-			if text:sub(1, 1) ~= "-" then
-				text = text:gsub("%-", "")
-			else
-				text = "-" .. text:sub(2):gsub("%-", "")
-			end
+				if text:sub(1, 1) ~= "-" then
+					text = text:gsub("%-", "")
+				else
+					text = "-" .. text:sub(2):gsub("%-", "")
+				end
 
-			boxSelf:SetText(text)
-		end)
+				boxSelf:SetText(text)
+			end)
+		else
+			box:SetNumeric(true)
+		end
 	end
 
 	local function Commit()
 		local new = box:GetText()
 
-		setValue(new)
+		options.SetValue(new)
 
-		box:SetText(tostring(getValue()))
+		local value = options.GetValue() or ""
+
+		box:SetText(tostring(value))
 		box:SetCursorPosition(0)
 	end
 
@@ -185,34 +199,37 @@ function M:CreateEditBox(parent, numeric, labelText, width, getValue, setValue)
 	box:SetScript("OnEditFocusLost", Commit)
 
 	function box.MiniRefresh(boxSelf)
-		boxSelf:SetText(tostring(getValue()))
+		local value = options.GetValue()
+		boxSelf:SetText(tostring(value))
 		boxSelf:SetCursorPosition(0)
 	end
 
 	box:MiniRefresh()
 
-	AddControlForRefresh(parent, box)
+	AddControlForRefresh(options.Parent, box)
 
 	return label, box
 end
 
----Creates a dropdown menu using the selected parameters.
----@param parent table the parent frame
----@param items any[] list of items
----@param getValue fun(): any
----@param setSelected fun(value: any)
----@param getText? fun(value: any): string
+---Creates a dropdown menu using the specified options.
+---@param options DropdownOptions
 ---@return table the dropdown menu control
 ---@return boolean true if used a modern dropdown, otherwise false
-function M:Dropdown(parent, items, getValue, setSelected, getText)
+function M:Dropdown(options)
+	if not options.Parent or not options.GetValue or not options.SetValue or not options.Items then
+		error("Invalid dropdown options")
+	end
+
 	if MenuUtil and MenuUtil.CreateRadioMenu then
-		local dd = CreateFrame("DropdownButton", nil, parent, "WowStyle1DropdownTemplate")
+		local dd = CreateFrame("DropdownButton", nil, options.Parent, "WowStyle1DropdownTemplate")
 		dd:SetupMenu(function(_, rootDescription)
-			for _, value in ipairs(items) do
-				rootDescription:CreateRadio(getText and getText(value) or tostring(value), function(x)
-					return x == getValue()
+			for _, value in ipairs(options.Items) do
+				local text = options.GetText and options.GetText(value) or tostring(value)
+
+				rootDescription:CreateRadio(text, function(x)
+					return x == options.GetValue()
 				end, function()
-					setSelected(value)
+					options.SetValue(value)
 				end, value)
 			end
 		end)
@@ -221,7 +238,7 @@ function M:Dropdown(parent, items, getValue, setSelected, getText)
 			ddSelf:Update()
 		end
 
-		AddControlForRefresh(parent, dd)
+		AddControlForRefresh(options.Parent, dd)
 
 		return dd, true
 	end
@@ -230,69 +247,67 @@ function M:Dropdown(parent, items, getValue, setSelected, getText)
 
 	if libDD then
 		-- needs a name to not bug out
-		local dd = libDD:Create_UIDropDownMenu("MiniArenaDebuffsDropdown" .. dropDownId, parent)
+		local dd = libDD:Create_UIDropDownMenu("MiniArenaDebuffsDropdown" .. dropDownId, options.Parent)
 		dropDownId = dropDownId + 1
 
 		libDD:UIDropDownMenu_Initialize(dd, function()
-			for i, value in ipairs(items) do
+			for _, value in ipairs(options.Items) do
 				local info = libDD:UIDropDownMenu_CreateInfo()
-				info.text = getText and getText(value) or tostring(value)
+				info.text = options.GetText and options.GetText(value) or tostring(value)
 				info.value = value
 
 				info.checked = function()
-					return getValue() == value
+					return options.GetValue() == value
 				end
 
 				local id = dd:GetID(info)
 
 				-- onclick handler
 				info.func = function()
-					local text = getText and getText(value) or tostring(value)
-
-					print(i, id)
+					local text = options.GetText and options.GetText(value) or tostring(value)
 
 					libDD:UIDropDownMenu_SetSelectedID(dd, id)
 					libDD:UIDropDownMenu_SetText(dd, text)
 
-					setSelected(value)
+					options.SetValue(value)
 				end
 
 				libDD:UIDropDownMenu_AddButton(info, 1)
 
-				if getValue() == value then
+				if options.GetValue() == value then
 					libDD:UIDropDownMenu_SetSelectedID(dd, id)
 				end
 			end
 		end)
 
 		function dd.MiniRefresh()
-			local value = getValue()
-			local text = getText and getText(value) or tostring(value)
+			local value = options.GetValue()
+			local text = options.GetText and options.GetText(value) or tostring(value)
 			libDD:UIDropDownMenu_SetText(dd, text)
 		end
 
-		AddControlForRefresh(parent, dd)
+		AddControlForRefresh(options.Parent, dd)
 
 		return dd, false
 	end
 
 	-- UIDropDownMenuTemplate is nil, but still usable
 	if UIDropDownMenu_Initialize then
-		local dd = CreateFrame("Frame", name, parent, "UIDropDownMenuTemplate")
+		local dd = CreateFrame("Frame", name, options.Parent, "UIDropDownMenuTemplate")
 
 		UIDropDownMenu_Initialize(dd, function()
-			for _, value in ipairs(items) do
+			for _, value in ipairs(options.Items) do
 				local info = UIDropDownMenu_CreateInfo()
-				info.text = getText and getText(value) or tostring(value)
+				info.text = options.GetText and options.GetText(value) or tostring(value)
 				info.value = value
 
 				info.checked = function()
-					return getValue() == value
+					return options.GetValue() == value
 				end
 
 				-- onclick handler
 				info.func = function()
-					local text = getText and getText(value) or tostring(value)
+					local text = options.GetText and options.GetText(value) or tostring(value)
 					local id = dd:GetID(info)
 
 					UIDropDownMenu_SetSelectedID(dd, id)
@@ -311,12 +326,12 @@ function M:Dropdown(parent, items, getValue, setSelected, getText)
 		end)
 
 		function dd.MiniRefresh()
-			local value = getValue()
-			local text = getText and getText(value) or tostring(value)
+			local value = options.GetValue()
+			local text = options.GetText and options.GetText(value) or tostring(value)
 			UIDropDownMenu_SetText(dd, text)
 		end
 
-		AddControlForRefresh(parent, dd)
+		AddControlForRefresh(options.Parent, dd)
 
 		return dd, false
 	end
@@ -338,35 +353,40 @@ function M:SettingsSize()
 	return 600, 600
 end
 
----comment
----@param parent table
----@param setting CheckboxSetting
+---Creates a checkbox using the specified options.
+---@param options CheckboxOptions
 ---@return table checkbox
-function M:CreateSettingCheckbox(parent, setting)
-	local checkbox = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
-	checkbox.Text:SetText(" " .. setting.Name)
-	checkbox.Text:SetFontObject("GameFontNormal")
-	checkbox:SetChecked(setting.Enabled())
-	checkbox:HookScript("OnClick", function()
-		setting.OnChanged(checkbox:GetChecked())
-	end)
-
-	checkbox:SetScript("OnEnter", function(chkSelf)
-		GameTooltip:SetOwner(chkSelf, "ANCHOR_RIGHT")
-		GameTooltip:SetText(setting.Name, 1, 0.82, 0)
-		GameTooltip:AddLine(setting.Tooltip, 1, 1, 1, true)
-		GameTooltip:Show()
-	end)
-
-	checkbox:SetScript("OnLeave", function()
-		GameTooltip:Hide()
-	end)
-
-	function checkbox.MiniRefresh()
-		checkbox:SetChecked(setting.Enabled())
+function M:CreateSettingCheckbox(options)
+	if not options or not options.Parent or not options.GetValue or not options.SetValue then
+		error("Invalid checkbox settings")
 	end
 
-	AddControlForRefresh(parent, checkbox)
+	local checkbox = CreateFrame("CheckButton", nil, options.Parent, "UICheckButtonTemplate")
+	checkbox.Text:SetText(" " .. options.LabelText)
+	checkbox.Text:SetFontObject("GameFontNormal")
+	checkbox:SetChecked(options.GetValue())
+	checkbox:HookScript("OnClick", function()
+		options.SetValue(checkbox:GetChecked())
+	end)
+
+	if options.Tooltip then
+		checkbox:SetScript("OnEnter", function(chkSelf)
+			GameTooltip:SetOwner(chkSelf, "ANCHOR_RIGHT")
+			GameTooltip:SetText(options.LabelText, 1, 0.82, 0)
+			GameTooltip:AddLine(options.Tooltip, 1, 1, 1, true)
+			GameTooltip:Show()
+		end)
+
+		checkbox:SetScript("OnLeave", function()
+			GameTooltip:Hide()
+		end)
+	end
+
+	function checkbox.MiniRefresh()
+		checkbox:SetChecked(options.GetValue())
+	end
+
+	AddControlForRefresh(options.Parent, checkbox)
 
 	return checkbox
 end
@@ -448,8 +468,28 @@ end
 loader:RegisterEvent("ADDON_LOADED")
 loader:SetScript("OnEvent", OnAddonLoaded)
 
----@class CheckboxSetting
----@field Name string
----@field Tooltip string
----@field Enabled fun(): boolean
----@field OnChanged fun(enabled: boolean)
+---@class CheckboxOptions
+---@field Parent table
+---@field LabelText string
+---@field Tooltip string?
+---@field GetValue fun(): boolean
+---@field SetValue fun(value: boolean)
+
+---@class EditboxOptions
+---@field Parent table
+---@field LabelText string
+---@field Tooltip string?
+---@field Numeric boolean?
+---@field AllowNegatives boolean?
+---@field EditBoxWidth number?
+---@field EditBoxHeight number?
+---@field GetValue fun(): string|number
+---@field SetValue fun(value: string|number)
+
+---@class DropdownOptions
+---@field Parent table
+---@field Items any[]
+---@field Tooltip string?
+---@field GetValue fun(): string
+---@field SetValue fun(value: string)
+---@field GetText? fun(value: any): string

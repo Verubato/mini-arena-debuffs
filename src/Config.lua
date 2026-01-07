@@ -83,51 +83,83 @@ function M:Init()
 	subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
 	subtitle:SetText("Shows debuffs on arena frames.")
 
-	local iconSizeLbl, iconSizeBox = mini:CreateEditBox(panel, true, "Icon Size", 80, function()
-		return db.IconSize
-	end, function(v)
-		db.IconSize = ClampInt(v, 10, 80, dbDefaults.IconSize)
-	end)
+	local iconSizeLbl, iconSizeBox = mini:CreateEditBox({
+		Parent = panel,
+		Numeric = true,
+		LabelText = "Icon Size",
+		GetValue = function()
+			return db.IconSize
+		end,
+		SetValue = function(v)
+			db.IconSize = mini:ClampInt(v, 10, 80, dbDefaults.IconSize)
+		end,
+	})
 
 	iconSizeLbl:SetPoint("TOPLEFT", subtitle, "BOTTOMLEFT", 0, -verticalSpacing)
 	iconSizeBox:SetPoint("TOPLEFT", iconSizeLbl, "BOTTOMLEFT", 4, -4)
 
-	local iconsPerRowLbl, iconsPerRowBox = mini:CreateEditBox(panel, true, "Icons Per Row", 80, function()
-		return db.IconsPerRow
-	end, function(v)
-		db.IconsPerRow = ClampInt(v, 1, 10, dbDefaults.IconsPerRow)
-		ApplySettings()
-	end)
+	local iconsPerRowLbl, iconsPerRowBox = mini:CreateEditBox({
+		Parent = panel,
+		Numeric = true,
+		LabelText = "Icons Per Row",
+		GetValue = function()
+			return db.IconsPerRow
+		end,
+		SetValue = function(v)
+			db.IconsPerRow = mini:ClampInt(v, 1, 10, dbDefaults.IconsPerRow)
+			ApplySettings()
+		end,
+	})
 
 	iconsPerRowLbl:SetPoint("LEFT", iconSizeBox, "RIGHT", horizontalSpacing, iconSizeBox:GetHeight())
 	iconsPerRowBox:SetPoint("TOPLEFT", iconsPerRowLbl, "BOTTOMLEFT", 4, -4)
 
-	local rowsLbl, rowsBox = mini:CreateEditBox(panel, true, "Rows", 80, function()
-		return db.Rows
-	end, function(v)
-		db.Rows = ClampInt(v, 1, 5, dbDefaults.Rows)
-		ApplySettings()
-	end)
+	local rowsLbl, rowsBox = mini:CreateEditBox({
+		Parent = panel,
+		Numeric = true,
+		LabelText = "Rows",
+		GetValue = function()
+			return db.Rows
+		end,
+		SetValue = function(v)
+			db.Rows = mini:ClampInt(v, 1, 5, dbDefaults.Rows)
+			ApplySettings()
+		end,
+	})
 
 	rowsLbl:SetPoint("LEFT", iconsPerRowBox, "RIGHT", horizontalSpacing, iconsPerRowBox:GetHeight())
 	rowsBox:SetPoint("TOPLEFT", rowsLbl, "BOTTOMLEFT", 4, -4)
 
-	local containerXLbl, containerXBox = mini:CreateEditBox(panel, true, "Offset X", 80, function()
-		return db.ContainerOffsetX
-	end, function(v)
-		db.ContainerOffsetX = ClampInt(v, -200, 200, dbDefaults.ContainerOffsetX)
-		ApplySettings()
-	end)
+	local containerXLbl, containerXBox = mini:CreateEditBox({
+		Parent = panel,
+		Numeric = true,
+		AllowNegatives = true,
+		LabelText = "Offset X",
+		GetValue = function()
+			return db.ContainerOffsetX
+		end,
+		SetValue = function(v)
+			db.ContainerOffsetX = mini:ClampInt(v, -200, 200, dbDefaults.ContainerOffsetX)
+			ApplySettings()
+		end,
+	})
 
 	containerXLbl:SetPoint("TOPLEFT", iconSizeBox, "BOTTOMLEFT", -4, -verticalSpacing)
 	containerXBox:SetPoint("TOPLEFT", containerXLbl, "BOTTOMLEFT", 4, -4)
 
-	local containerYLbl, containerYBox = mini:CreateEditBox(panel, true, "Offset Y", 80, function()
-		return db.ContainerOffsetY
-	end, function(v)
-		db.ContainerOffsetY = ClampInt(v, -200, 200, dbDefaults.ContainerOffsetY)
-		ApplySettings()
-	end)
+	local containerYLbl, containerYBox = mini:CreateEditBox({
+		Parent = panel,
+		Numeric = true,
+		AllowNegatives = true,
+		LabelText = "Offset Y",
+		GetValue = function()
+			return db.ContainerOffsetY
+		end,
+		SetValue = function(v)
+			db.ContainerOffsetY = mini:ClampInt(v, -200, 200, dbDefaults.ContainerOffsetY)
+			ApplySettings()
+		end,
+	})
 
 	containerYLbl:SetPoint("LEFT", containerXBox, "RIGHT", horizontalSpacing, containerXBox:GetHeight())
 	containerYBox:SetPoint("TOPLEFT", containerYLbl, "BOTTOMLEFT", 4, -4)
@@ -135,14 +167,19 @@ function M:Init()
 	local pointDdlLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
 	pointDdlLbl:SetText("Anchor Point")
 
-	local pointDdl, modernDdl = mini:Dropdown(panel, anchorPoints, function()
-		return db.ContainerAnchorPoint
-	end, function(value)
-		if db.ContainerAnchorPoint ~= value then
-			db.ContainerAnchorPoint = value
-			ApplySettings()
-		end
-	end)
+	local pointDdl, modernDdl = mini:Dropdown({
+		Parent = panel,
+		Items = anchorPoints,
+		GetValue = function()
+			return db.ContainerAnchorPoint
+		end,
+		SetValue = function(value)
+			if db.ContainerAnchorPoint ~= value then
+				db.ContainerAnchorPoint = value
+				ApplySettings()
+			end
+		end,
+	})
 
 	pointDdl:SetWidth(dropdownWidth)
 	pointDdlLbl:SetPoint("TOPLEFT", containerXBox, "BOTTOMLEFT", -4, -verticalSpacing)
@@ -152,25 +189,31 @@ function M:Init()
 	local relativeToLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
 	relativeToLbl:SetText("Relative to")
 
-	local relativeToDdl = mini:Dropdown(panel, anchorPoints, function()
-		return db.ContainerRelativePoint
-	end, function(value)
-		if db.ContainerRelativePoint ~= value then
-			db.ContainerRelativePoint = value
-			ApplySettings()
-		end
-	end)
+	local relativeToDdl = mini:Dropdown({
+		Parent = panel,
+		Items = anchorPoints,
+		GetValue = function()
+			return db.ContainerRelativePoint
+		end,
+		SetValue = function(value)
+			if db.ContainerRelativePoint ~= value then
+				db.ContainerRelativePoint = value
+				ApplySettings()
+			end
+		end,
+	})
 
 	relativeToDdl:SetWidth(dropdownWidth)
 	relativeToDdl:SetPoint("LEFT", pointDdl, "RIGHT", horizontalSpacing, 0)
 	relativeToLbl:SetPoint("BOTTOMLEFT", relativeToDdl, "TOPLEFT", 0, 8)
 
-	local onlyMineChk = mini:CreateSettingCheckbox(panel, {
-		Name = "Only my debuffs",
-		Enabled = function()
+	local onlyMineChk = mini:CreateSettingCheckbox({
+		Parent = panel,
+		LabelText = "Only my debuffs",
+		GetValue = function()
 			return (db.Filter or ""):find("PLAYER") ~= nil
 		end,
-		OnChanged = function(enabled)
+		SetValue = function(enabled)
 			db.Filter = enabled and "HARMFUL|PLAYER" or "HARMFUL"
 			ApplySettings()
 		end,
@@ -180,32 +223,53 @@ function M:Init()
 	onlyMineChk:SetPoint("TOPLEFT", pointDdl, "BOTTOMLEFT", modernDdl and 0 or 16, -verticalSpacing)
 
 	local anchorWidth = 300
-	local arena1AnchorLbl, arena1AnchorBox = mini:CreateEditBox(panel, false, "Arena 1 Frame", anchorWidth, function()
-		return db.ArenaFrame1Anchor
-	end, function(v)
-		db.ArenaFrame1Anchor = v
-		ApplySettings()
-	end)
+	local arena1AnchorLbl, arena1AnchorBox = mini:CreateEditBox({
+		Parent = panel,
+
+		LabelText = "Arena 1 Frame",
+		EditBoxWidth = anchorWidth,
+		GetValue = function()
+			return tostring(db.ArenaFrame1Anchor)
+		end,
+		SetValue = function(v)
+			db.ArenaFrame1Anchor = v
+			ApplySettings()
+		end,
+	})
 
 	arena1AnchorLbl:SetPoint("TOPLEFT", onlyMineChk, "BOTTOMLEFT", 0, -verticalSpacing)
 	arena1AnchorBox:SetPoint("TOPLEFT", arena1AnchorLbl, "BOTTOMLEFT", 4, -8)
 
-	local arena2AnchorLbl, arena2AnchorBox = mini:CreateEditBox(panel, false, "Arena 2 Frame", anchorWidth, function()
-		return db.ArenaFrame2Anchor
-	end, function(v)
-		db.ArenaFrame2Anchor = v
-		ApplySettings()
-	end)
+	local arena2AnchorLbl, arena2AnchorBox = mini:CreateEditBox({
+		Parent = panel,
+
+		LabelText = "Arena 2 Frame",
+		EditBoxWidth = anchorWidth,
+		GetValue = function()
+			return tostring(db.ArenaFrame2Anchor)
+		end,
+		SetValue = function(v)
+			db.ArenaFrame2Anchor = v
+			ApplySettings()
+		end,
+	})
 
 	arena2AnchorLbl:SetPoint("TOPLEFT", arena1AnchorBox, "BOTTOMLEFT", -4, -verticalSpacing)
 	arena2AnchorBox:SetPoint("TOPLEFT", arena2AnchorLbl, "BOTTOMLEFT", 4, -8)
 
-	local arena3AnchorLbl, arena3AnchorBox = mini:CreateEditBox(panel, false, "Arena 3 Frame", anchorWidth, function()
-		return db.ArenaFrame3Anchor
-	end, function(v)
-		db.ArenaFrame3Anchor = v
-		ApplySettings()
-	end)
+	local arena3AnchorLbl, arena3AnchorBox = mini:CreateEditBox({
+		Parent = panel,
+
+		LabelText = "Arena 2 Frame",
+		EditBoxWidth = anchorWidth,
+		GetValue = function()
+			return tostring(db.ArenaFrame3Anchor)
+		end,
+		SetValue = function(v)
+			db.ArenaFrame3Anchor = v
+			ApplySettings()
+		end,
+	})
 
 	arena3AnchorLbl:SetPoint("TOPLEFT", arena2AnchorBox, "BOTTOMLEFT", -4, -verticalSpacing)
 	arena3AnchorBox:SetPoint("TOPLEFT", arena3AnchorLbl, "BOTTOMLEFT", 4, -8)
