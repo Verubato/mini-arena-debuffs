@@ -165,19 +165,19 @@ function M:Init()
 	relativeToDdl:SetPoint("LEFT", pointDdl, "RIGHT", horizontalSpacing, 0)
 	relativeToLbl:SetPoint("BOTTOMLEFT", relativeToDdl, "TOPLEFT", 0, 8)
 
-	local onlyMineChk = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+	local onlyMineChk = mini:CreateSettingCheckbox(panel, {
+		Name = "Only my debuffs",
+		Enabled = function()
+			return (db.Filter or ""):find("PLAYER") ~= nil
+		end,
+		OnChanged = function(enabled)
+			db.Filter = enabled and "HARMFUL|PLAYER" or "HARMFUL"
+			ApplySettings()
+		end,
+		Tooltip = "Only show your debuffs (as opposed to the debuffs of everyone).",
+	})
+
 	onlyMineChk:SetPoint("TOPLEFT", pointDdl, "BOTTOMLEFT", modernDdl and 0 or 16, -verticalSpacing)
-	onlyMineChk.Text:SetText("Only my debuffs")
-	onlyMineChk.Text:SetFontObject("GameFontWhite")
-	onlyMineChk:SetChecked((db.Filter or ""):find("PLAYER") ~= nil)
-	onlyMineChk:SetScript("OnClick", function()
-		db.Filter = onlyMineChk:GetChecked() and "HARMFUL|PLAYER" or "HARMFUL"
-		ApplySettings()
-	end)
-	onlyMineChk.Refresh = function()
-		local checked = (db.Filter or ""):find("PLAYER") ~= nil
-		onlyMineChk:SetChecked(checked)
-	end
 
 	local anchorWidth = 300
 	local arena1AnchorLbl, arena1AnchorBox = mini:CreateEditBox(panel, false, "Arena 1 Frame", anchorWidth, function()
@@ -247,7 +247,7 @@ function M:Init()
 		containerYBox,
 		arena1AnchorBox,
 		arena2AnchorBox,
-		arena3AnchorBox
+		arena3AnchorBox,
 	})
 
 	SLASH_MINIARENADEBUFFS1 = "/miniarenadebuffs"
