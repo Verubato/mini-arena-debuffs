@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.2
+
+- Loading saved variables bug fix.
+
 ## 1.1.1
 
 - Fixed "Only my debuffs" checkbox not resetting.
