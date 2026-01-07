@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.0
+
+Some internal framework updates to make things easier to support/maintain.
+
 ## 1.1.2
 
 - Loading saved variables bug fix.
