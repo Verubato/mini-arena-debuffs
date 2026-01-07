@@ -2,7 +2,7 @@
 ## Title: MiniArenaDebuffs
 ## Notes: Shows debuffs on arena frames.
 ## Author: Verz
-## Version: 1.1.2
+## Version: 1.2.0
 ## SavedVariables: MiniArenaDebuffsDB
 ## IconTexture: Interface\AddOns\MiniArenaDebuffs\icon.blp
 ## X-Curse-Project-ID: 1421998
