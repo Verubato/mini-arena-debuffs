@@ -1,5 +1,7 @@
 local addonName, addon = ...
-local loader
+---@type MiniFramework
+local mini = addon.Framework
+local eventsFrame
 local headers = {}
 local testHeaders = {}
 local testArenaFrames = {}
@@ -64,7 +66,7 @@ local function GetRealArenaFrame(i)
 	local frame = _G[anchor]
 
 	if not frame then
-		addon:Notify(string.format("Bad anchor '%s' for arena frame %d.", anchor, i))
+		mini:Notify("Bad anchor '%s' for arena frame %d.", anchor, i)
 		return default
 	end
 
@@ -451,27 +453,18 @@ local function OnEvent(_, event)
 	end
 end
 
-local function OnAddonLoaded(_, _, name)
-	if name ~= addonName then
-		return
-	end
-
+local function OnAddonLoaded()
 	addon.Config:Init()
 
-	db = MiniArenaDebuffsDB or {}
-
-	loader:UnregisterEvent("ADDON_LOADED")
+	db = mini:GetSavedVars()
 
 	CreateOrUpdateHeaders()
 
-	loader:SetScript("OnEvent", OnEvent)
-	loader:RegisterEvent("PLAYER_ENTERING_WORLD")
-	loader:RegisterEvent("PLAYER_REGEN_ENABLED")
-	loader:RegisterEvent("PLAYER_REGEN_DISABLED")
-end
-
-function addon:Notify(msg)
-	print(string.format("%s - %s", addonName, msg))
+	eventsFrame = CreateFrame("Frame")
+	eventsFrame:SetScript("OnEvent", OnEvent)
+	eventsFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+	eventsFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+	eventsFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 end
 
 function addon:Refresh()
@@ -506,10 +499,8 @@ function addon:ToggleTest()
 	addon:Refresh()
 
 	if InCombatLockdown() then
-		addon:Notify("Can't test during combat, we'll test once combat drops.")
+		mini:Notify("Can't test during combat, we'll test once combat drops.")
 	end
 end
 
-loader = CreateFrame("Frame")
-loader:RegisterEvent("ADDON_LOADED")
-loader:SetScript("OnEvent", OnAddonLoaded)
+mini:WaitForAddonLoad(OnAddonLoaded)
