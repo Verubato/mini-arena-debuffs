@@ -83,7 +83,7 @@ function M:Init()
 	subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
 	subtitle:SetText("Shows debuffs on arena frames.")
 
-	local iconSizeLbl, iconSizeBox = mini:CreateEditBox({
+	local iconSize = mini:CreateEditBox({
 		Parent = panel,
 		Numeric = true,
 		LabelText = "Icon Size",
@@ -95,10 +95,10 @@ function M:Init()
 		end,
 	})
 
-	iconSizeLbl:SetPoint("TOPLEFT", subtitle, "BOTTOMLEFT", 0, -verticalSpacing)
-	iconSizeBox:SetPoint("TOPLEFT", iconSizeLbl, "BOTTOMLEFT", 4, -4)
+	iconSize.Label:SetPoint("TOPLEFT", subtitle, "BOTTOMLEFT", 0, -verticalSpacing)
+	iconSize.EditBox:SetPoint("TOPLEFT", iconSize.Label, "BOTTOMLEFT", 4, -4)
 
-	local iconsPerRowLbl, iconsPerRowBox = mini:CreateEditBox({
+	local iconsPerRow = mini:CreateEditBox({
 		Parent = panel,
 		Numeric = true,
 		LabelText = "Icons Per Row",
@@ -111,10 +111,10 @@ function M:Init()
 		end,
 	})
 
-	iconsPerRowLbl:SetPoint("LEFT", iconSizeBox, "RIGHT", horizontalSpacing, iconSizeBox:GetHeight())
-	iconsPerRowBox:SetPoint("TOPLEFT", iconsPerRowLbl, "BOTTOMLEFT", 4, -4)
+	iconsPerRow.Label:SetPoint("LEFT", iconSize.EditBox, "RIGHT", horizontalSpacing, iconSize.EditBox:GetHeight())
+	iconsPerRow.EditBox:SetPoint("TOPLEFT", iconsPerRow.Label, "BOTTOMLEFT", 4, -4)
 
-	local rowsLbl, rowsBox = mini:CreateEditBox({
+	local rows = mini:CreateEditBox({
 		Parent = panel,
 		Numeric = true,
 		LabelText = "Rows",
@@ -127,10 +127,10 @@ function M:Init()
 		end,
 	})
 
-	rowsLbl:SetPoint("LEFT", iconsPerRowBox, "RIGHT", horizontalSpacing, iconsPerRowBox:GetHeight())
-	rowsBox:SetPoint("TOPLEFT", rowsLbl, "BOTTOMLEFT", 4, -4)
+	rows.Label:SetPoint("LEFT", iconsPerRow.EditBox, "RIGHT", horizontalSpacing, iconsPerRow.EditBox:GetHeight())
+	rows.EditBox:SetPoint("TOPLEFT", rows.Label, "BOTTOMLEFT", 4, -4)
 
-	local containerXLbl, containerXBox = mini:CreateEditBox({
+	local containerX = mini:CreateEditBox({
 		Parent = panel,
 		Numeric = true,
 		AllowNegatives = true,
@@ -144,10 +144,10 @@ function M:Init()
 		end,
 	})
 
-	containerXLbl:SetPoint("TOPLEFT", iconSizeBox, "BOTTOMLEFT", -4, -verticalSpacing)
-	containerXBox:SetPoint("TOPLEFT", containerXLbl, "BOTTOMLEFT", 4, -4)
+	containerX.Label:SetPoint("TOPLEFT", iconSize.EditBox, "BOTTOMLEFT", -4, -verticalSpacing)
+	containerX.EditBox:SetPoint("TOPLEFT", containerX.Label, "BOTTOMLEFT", 4, -4)
 
-	local containerYLbl, containerYBox = mini:CreateEditBox({
+	local containerY = mini:CreateEditBox({
 		Parent = panel,
 		Numeric = true,
 		AllowNegatives = true,
@@ -161,8 +161,8 @@ function M:Init()
 		end,
 	})
 
-	containerYLbl:SetPoint("LEFT", containerXBox, "RIGHT", horizontalSpacing, containerXBox:GetHeight())
-	containerYBox:SetPoint("TOPLEFT", containerYLbl, "BOTTOMLEFT", 4, -4)
+	containerY.Label:SetPoint("LEFT", containerX.EditBox, "RIGHT", horizontalSpacing, containerX.EditBox:GetHeight())
+	containerY.EditBox:SetPoint("TOPLEFT", containerY.Label, "BOTTOMLEFT", 4, -4)
 
 	local pointDdlLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
 	pointDdlLbl:SetText("Anchor Point")
@@ -223,7 +223,7 @@ function M:Init()
 	onlyMineChk:SetPoint("TOPLEFT", pointDdl, "BOTTOMLEFT", modernDdl and 0 or 16, -verticalSpacing)
 
 	local anchorWidth = 300
-	local arena1AnchorLbl, arena1AnchorBox = mini:CreateEditBox({
+	local arena1 = mini:CreateEditBox({
 		Parent = panel,
 
 		LabelText = "Arena 1 Frame",
@@ -237,10 +237,10 @@ function M:Init()
 		end,
 	})
 
-	arena1AnchorLbl:SetPoint("TOPLEFT", onlyMineChk, "BOTTOMLEFT", 0, -verticalSpacing)
-	arena1AnchorBox:SetPoint("TOPLEFT", arena1AnchorLbl, "BOTTOMLEFT", 4, -8)
+	arena1.Label:SetPoint("TOPLEFT", onlyMineChk, "BOTTOMLEFT", 0, -verticalSpacing)
+	arena1.EditBox:SetPoint("TOPLEFT", arena1.Label, "BOTTOMLEFT", 4, -8)
 
-	local arena2AnchorLbl, arena2AnchorBox = mini:CreateEditBox({
+	local arena2 = mini:CreateEditBox({
 		Parent = panel,
 
 		LabelText = "Arena 2 Frame",
@@ -254,10 +254,10 @@ function M:Init()
 		end,
 	})
 
-	arena2AnchorLbl:SetPoint("TOPLEFT", arena1AnchorBox, "BOTTOMLEFT", -4, -verticalSpacing)
-	arena2AnchorBox:SetPoint("TOPLEFT", arena2AnchorLbl, "BOTTOMLEFT", 4, -8)
+	arena2.Label:SetPoint("TOPLEFT", arena1.EditBox, "BOTTOMLEFT", -4, -verticalSpacing)
+	arena2.EditBox:SetPoint("TOPLEFT", arena2.Label, "BOTTOMLEFT", 4, -8)
 
-	local arena3AnchorLbl, arena3AnchorBox = mini:CreateEditBox({
+	local arena3 = mini:CreateEditBox({
 		Parent = panel,
 
 		LabelText = "Arena 2 Frame",
@@ -271,8 +271,8 @@ function M:Init()
 		end,
 	})
 
-	arena3AnchorLbl:SetPoint("TOPLEFT", arena2AnchorBox, "BOTTOMLEFT", -4, -verticalSpacing)
-	arena3AnchorBox:SetPoint("TOPLEFT", arena3AnchorLbl, "BOTTOMLEFT", 4, -8)
+	arena3.Label:SetPoint("TOPLEFT", arena2.EditBox, "BOTTOMLEFT", -4, -verticalSpacing)
+	arena3.EditBox:SetPoint("TOPLEFT", arena3.Label, "BOTTOMLEFT", 4, -8)
 
 	local resetBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
 	resetBtn:SetSize(120, 26)
@@ -304,14 +304,14 @@ function M:Init()
 	end)
 
 	mini:WireTabNavigation({
-		iconSizeBox,
-		iconsPerRowBox,
-		rowsBox,
-		containerXBox,
-		containerYBox,
-		arena1AnchorBox,
-		arena2AnchorBox,
-		arena3AnchorBox,
+		iconSize.EditBox,
+		iconsPerRow.EditBox,
+		rows.EditBox,
+		containerX.EditBox,
+		containerY.EditBox,
+		arena1.EditBox,
+		arena2.EditBox,
+		arena3.EditBox,
 	})
 
 	SLASH_MINIARENADEBUFFS1 = "/miniarenadebuffs"
@@ -327,7 +327,7 @@ function M:Init()
 		end
 
 		if Settings and Settings.OpenToCategory then
-			if not InCombatLockdown() or CanOpenOptionsDuringCombat() then
+			if not InCombatLockdown() or mini:CanOpenOptionsDuringCombat() then
 				Settings.OpenToCategory(category:GetID())
 			else
 				mini:NotifyCombatLockdown()
