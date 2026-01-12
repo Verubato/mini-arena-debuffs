@@ -10,6 +10,7 @@ local dialog
 local M = {
 	VerticalSpacing = 16,
 	HorizontalSpacing = 20,
+	TextMaxWidth = 600,
 }
 addon.Framework = M
 
@@ -51,6 +52,7 @@ local function ConfigureNumbericBox(box, allowNegative)
 
 		-- strip invalid chars
 		text = text:gsub("[^%d%-]", "")
+
 		-- only one leading '-'
 		text = text:gsub("%-+", "-")
 
@@ -160,7 +162,25 @@ function M:CanOpenOptionsDuringCombat()
 	return LE_EXPANSION_LEVEL_CURRENT < LE_EXPANSION_MIDNIGHT
 end
 
+function M:SettingsSize()
+	local settingsContainer = SettingsPanel and SettingsPanel.Container
+
+	if settingsContainer then
+		return settingsContainer:GetWidth(), settingsContainer:GetHeight()
+	end
+
+	if InterfaceOptionsFramePanelContainer then
+		return InterfaceOptionsFramePanelContainer:GetWidth(), InterfaceOptionsFramePanelContainer:GetHeight()
+	end
+
+	return 600, 600
+end
+
 function M:AddCategory(panel)
+	if not panel then
+		error("AddCategory - panel must not be nil.")
+	end
+
 	if Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory then
 		local category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
 		Settings.RegisterAddOnCategory(category)
@@ -176,6 +196,14 @@ function M:AddCategory(panel)
 end
 
 function M:AddSubCategory(parentCategory, panel)
+	if not parentCategory then
+		error("AddSubCategory - parentCategory must not be nil.")
+	end
+
+	if not panel then
+		error("AddSubCategory - panel must not be nil.")
+	end
+
 	if Settings and Settings.RegisterCanvasLayoutSubcategory then
 		Settings.RegisterCanvasLayoutSubcategory(parentCategory, panel, panel.name)
 	elseif InterfaceOptions_AddCategory then
@@ -183,46 +211,11 @@ function M:AddSubCategory(parentCategory, panel)
 	end
 end
 
-function M:CreateDivider(parent, text)
-	local container = CreateFrame("Frame", nil, parent)
-	container:SetHeight(20)
-
-	local leftLine = container:CreateTexture(nil, "ARTWORK")
-	leftLine:SetColorTexture(1, 1, 1, 0.15)
-	leftLine:SetHeight(1)
-
-	local rightLine = container:CreateTexture(nil, "ARTWORK")
-	rightLine:SetColorTexture(1, 1, 1, 0.15)
-	rightLine:SetHeight(1)
-
-	local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	label:SetText(text or "")
-	label:SetPoint("CENTER", container, "CENTER")
-
-	leftLine:SetPoint("LEFT", 16, 0)
-	leftLine:SetPoint("RIGHT", label, "LEFT", -8, 0)
-
-	rightLine:SetPoint("LEFT", label, "RIGHT", 8, 0)
-	rightLine:SetPoint("RIGHT", -16, 0)
-
-	return container
-end
-
-function M:SettingsSize()
-	local settingsContainer = SettingsPanel and SettingsPanel.Container
-
-	if settingsContainer then
-		return settingsContainer:GetWidth(), settingsContainer:GetHeight()
-	end
-
-	if InterfaceOptionsFramePanelContainer then
-		return InterfaceOptionsFramePanelContainer:GetWidth(), InterfaceOptionsFramePanelContainer:GetHeight()
-	end
-
-	return 600, 600
-end
-
 function M:WireTabNavigation(controls)
+	if not controls then
+		error("WireTabNavigation - controls must not be nil")
+	end
+
 	for i, control in ipairs(controls) do
 		control:EnableKeyboard(true)
 
@@ -259,12 +252,116 @@ function M:WireTabNavigation(controls)
 	end
 end
 
+---@param options TextLineOptions
+---@return table control
+function M:TextLine(options)
+	if not options then
+		error("TextLine - options must not be nil.")
+	end
+
+	if not options.Parent then
+		error("TextLine - invalid options.")
+	end
+
+	local fstring = options.Parent:CreateFontString(nil, "ARTWORK", options.Font or "GameFontWhite")
+	fstring:SetSpacing(0)
+	fstring:SetWidth(M.TextMaxWidth)
+	fstring:SetJustifyH("LEFT")
+	fstring:SetText(options.Text or "")
+
+	return fstring
+end
+
+---@param options TextBlockOptions
+---@return table container
+function M:TextBlock(options)
+	if not options then
+		error("TextBlock - options must not be nil.")
+	end
+
+	if not options.Parent or not options.Lines then
+		error("TextBlock - invalid options.")
+	end
+
+	local verticalSpacing = options.VerticalSpacing or M.VerticalSpacing
+	local container = CreateFrame("Frame", nil, options.Parent)
+	container:SetWidth(M.TextMaxWidth)
+
+	local anchor
+	local totalHeight = 0
+
+	for i, line in ipairs(options.Lines) do
+		local fstring = M:TextLine({
+			Text = line,
+			Parent = container,
+			Font = options.Font,
+		})
+
+		-- spacing between lines
+		local gap = (i == 1) and 0 or (verticalSpacing / 2)
+
+		if i == 1 then
+			fstring:SetPoint("TOPLEFT", container, "TOPLEFT", 0, 0)
+			totalHeight = totalHeight + fstring:GetStringHeight()
+		else
+			fstring:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -gap)
+			totalHeight = totalHeight + gap + fstring:GetStringHeight()
+		end
+
+		anchor = fstring
+	end
+
+	container:SetHeight(math.max(1, totalHeight))
+
+	return container
+end
+
+---Creates a horizontal line with a label.
+---@param options DividerOptions
+---@return table
+function M:Divider(options)
+	if not options then
+		error("Divider - options must not be nil.")
+	end
+
+	if not options.Parent then
+		error("Divider - invalid options.")
+	end
+
+	local container = CreateFrame("Frame", nil, options.Parent)
+	container:SetHeight(20)
+
+	local leftLine = container:CreateTexture(nil, "ARTWORK")
+	leftLine:SetColorTexture(1, 1, 1, 0.15)
+	leftLine:SetHeight(1)
+
+	local rightLine = container:CreateTexture(nil, "ARTWORK")
+	rightLine:SetColorTexture(1, 1, 1, 0.15)
+	rightLine:SetHeight(1)
+
+	local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	label:SetText(options.Text or "")
+	label:SetPoint("CENTER", container, "CENTER")
+
+	leftLine:SetPoint("LEFT", 16, 0)
+	leftLine:SetPoint("RIGHT", label, "LEFT", -8, 0)
+
+	rightLine:SetPoint("LEFT", label, "RIGHT", 8, 0)
+	rightLine:SetPoint("RIGHT", -16, 0)
+
+	return container
+end
+
 ---Creates an edit box with a label using the specified options.
 ---@param options EditboxOptions
 ---@return EditBoxReturn
-function M:CreateEditBox(options)
+function M:EditBox(options)
+	if not options then
+		error("EditBox - options must not be nil.")
+	end
+
 	if not options.Parent or not options.GetValue or not options.SetValue then
-		error("Invalid edit box options")
+		error("EditBox - invalid options.")
 	end
 
 	local label = options.Parent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
@@ -314,8 +411,12 @@ end
 ---@return table the dropdown menu control
 ---@return boolean true if used a modern dropdown, otherwise false
 function M:Dropdown(options)
+	if not options then
+		error("Dropdown - options must not be nil.")
+	end
+
 	if not options.Parent or not options.GetValue or not options.SetValue or not options.Items then
-		error("Invalid dropdown options")
+		error("Dropdown - invalid options.")
 	end
 
 	if MenuUtil and MenuUtil.CreateRadioMenu then
@@ -440,9 +541,13 @@ end
 ---Creates a checkbox using the specified options.
 ---@param options CheckboxOptions
 ---@return table checkbox
-function M:CreateSettingCheckbox(options)
+function M:Checkbox(options)
+	if not options then
+		error("Checkbox - options must not be nil.")
+	end
+
 	if not options or not options.Parent or not options.GetValue or not options.SetValue then
-		error("Invalid checkbox settings")
+		error("Checkbox - invalid options.")
 	end
 
 	local checkbox = CreateFrame("CheckButton", nil, options.Parent, "UICheckButtonTemplate")
@@ -481,7 +586,11 @@ end
 ---Creates a slider using the specified options.
 ---@param options SliderOptions
 ---@return SliderReturn
-function M:CreateSlider(options)
+function M:Slider(options)
+	if not options then
+		error("Slider - options must not be nil.")
+	end
+
 	if
 		not options.Parent
 		or not options.GetValue
@@ -490,7 +599,7 @@ function M:CreateSlider(options)
 		or not options.Max
 		or not options.Step
 	then
-		error("Invalid slider options")
+		error("Slider - invalid options.")
 	end
 
 	local slider = CreateFrame("Slider", addonName .. "Slider" .. sliderId, options.Parent, "OptionsSliderTemplate")
@@ -571,25 +680,30 @@ function M:CreateSlider(options)
 	return { Slider = slider, EditBox = box, Label = label }
 end
 
----@param text string
----@param width number?
----@param height number?
-function M:ShowDialog(text, width, height)
+---@param options DialogOptions
+function M:ShowDialog(options)
+	if not options then
+		error("ShowDialog - options must not be nil.")
+	end
+
+	if not options.Text then
+		error("ShowDialog - invalid options.")
+	end
+
 	local dlg = GetOrCreateDialog()
 
-	if width then
-		dlg:SetWidth(width)
+	if options.Width then
+		dlg:SetWidth(options.Width)
 	end
 
-	if height then
-		dlg:SetHeight(height)
+	if options.Height then
+		dlg:SetHeight(options.Height)
 	end
 
-	dlg.Text:SetText(text)
+	dlg.Text:SetText(options.Text)
 
 	dlg:ClearAllPoints()
 	dlg:SetPoint("CENTER", UIParent, "CENTER")
-
 	dlg:Show()
 end
 
@@ -599,15 +713,38 @@ function M:HideDialog()
 	end
 end
 
-function M:RegisterSlashCommand(category, panel)
+function M:RegisterSlashCommand(category, panel, commands)
+	if not category then
+		error("RegisterSlashCommand - category must not be nil.")
+	end
+	if not panel then
+		error("RegisterSlashCommand - panel must not be nil.")
+	end
+
 	local upper = string.upper(addonName)
 
 	SlashCmdList[upper] = function()
 		M:OpenSettings(category, panel)
 	end
+
+	if commands and #commands > 0 then
+		local addonUpper = string.upper(addonName)
+
+		for i, command in ipairs(commands) do
+			_G["SLASH_" .. addonUpper .. i] = command
+		end
+	end
 end
 
 function M:OpenSettings(category, panel)
+	if not category then
+		error("OpenSettings - category must not be nil.")
+	end
+
+	if not panel then
+		error("OpenSettings - panel must not be nil.")
+	end
+
 	if Settings and Settings.OpenToCategory then
 		if not InCombatLockdown() or M:CanOpenOptionsDuringCombat() then
 			Settings.OpenToCategory(category:GetID())
@@ -623,6 +760,10 @@ function M:OpenSettings(category, panel)
 end
 
 function M:WaitForAddonLoad(callback)
+	if not callback then
+		error("WaitForAddonLoad - callback must not be nil.")
+	end
+
 	onLoadCallbacks[#onLoadCallbacks + 1] = callback
 
 	if loaded then
@@ -707,11 +848,6 @@ loader:SetScript("OnEvent", OnAddonLoaded)
 ---@field EditBox table
 ---@field Label table
 
----@class SliderReturn
----@field Label table
----@field EditBox table
----@field Slider table
-
 ---@class DropdownOptions
 ---@field Parent table
 ---@field Items any[]
@@ -730,3 +866,28 @@ loader:SetScript("OnEvent", OnAddonLoaded)
 ---@field Width number?
 ---@field GetValue fun(): number
 ---@field SetValue fun(value: number)
+
+---@class SliderReturn
+---@field Label table
+---@field EditBox table
+---@field Slider table
+
+---@class TextLineOptions
+---@field Text string
+---@field Parent table
+---@field Font string?
+
+---@class TextBlockOptions
+---@field Lines string[]
+---@field Parent table
+---@field Font string?
+---@field VerticalSpacing number?
+
+---@class DialogOptions
+---@field Text string
+---@field Width number?
+---@field Height number?
+
+---@class DividerOptions
+---@field Parent table
+---@field Text string
