@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.1
+
+Fixed bug when attempting to opening options during combat in Midnight.
+
 ## 1.2.0
 
 Some internal framework updates to make things easier to support/maintain.
