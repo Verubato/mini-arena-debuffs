@@ -83,7 +83,7 @@ function M:Init()
 	subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
 	subtitle:SetText("Shows debuffs on arena frames.")
 
-	local iconSize = mini:CreateEditBox({
+	local iconSize = mini:EditBox({
 		Parent = panel,
 		Numeric = true,
 		LabelText = "Icon Size",
@@ -98,7 +98,7 @@ function M:Init()
 	iconSize.Label:SetPoint("TOPLEFT", subtitle, "BOTTOMLEFT", 0, -verticalSpacing)
 	iconSize.EditBox:SetPoint("TOPLEFT", iconSize.Label, "BOTTOMLEFT", 4, -4)
 
-	local iconsPerRow = mini:CreateEditBox({
+	local iconsPerRow = mini:EditBox({
 		Parent = panel,
 		Numeric = true,
 		LabelText = "Icons Per Row",
@@ -114,7 +114,7 @@ function M:Init()
 	iconsPerRow.Label:SetPoint("LEFT", iconSize.EditBox, "RIGHT", horizontalSpacing, iconSize.EditBox:GetHeight())
 	iconsPerRow.EditBox:SetPoint("TOPLEFT", iconsPerRow.Label, "BOTTOMLEFT", 4, -4)
 
-	local rows = mini:CreateEditBox({
+	local rows = mini:EditBox({
 		Parent = panel,
 		Numeric = true,
 		LabelText = "Rows",
@@ -130,7 +130,7 @@ function M:Init()
 	rows.Label:SetPoint("LEFT", iconsPerRow.EditBox, "RIGHT", horizontalSpacing, iconsPerRow.EditBox:GetHeight())
 	rows.EditBox:SetPoint("TOPLEFT", rows.Label, "BOTTOMLEFT", 4, -4)
 
-	local containerX = mini:CreateEditBox({
+	local containerX = mini:EditBox({
 		Parent = panel,
 		Numeric = true,
 		AllowNegatives = true,
@@ -147,7 +147,7 @@ function M:Init()
 	containerX.Label:SetPoint("TOPLEFT", iconSize.EditBox, "BOTTOMLEFT", -4, -verticalSpacing)
 	containerX.EditBox:SetPoint("TOPLEFT", containerX.Label, "BOTTOMLEFT", 4, -4)
 
-	local containerY = mini:CreateEditBox({
+	local containerY = mini:EditBox({
 		Parent = panel,
 		Numeric = true,
 		AllowNegatives = true,
@@ -207,7 +207,7 @@ function M:Init()
 	relativeToDdl:SetPoint("LEFT", pointDdl, "RIGHT", horizontalSpacing, 0)
 	relativeToLbl:SetPoint("BOTTOMLEFT", relativeToDdl, "TOPLEFT", 0, 8)
 
-	local onlyMineChk = mini:CreateSettingCheckbox({
+	local onlyMineChk = mini:Checkbox({
 		Parent = panel,
 		LabelText = "Only my debuffs",
 		GetValue = function()
@@ -223,7 +223,7 @@ function M:Init()
 	onlyMineChk:SetPoint("TOPLEFT", pointDdl, "BOTTOMLEFT", modernDdl and 0 or 16, -verticalSpacing)
 
 	local anchorWidth = 300
-	local arena1 = mini:CreateEditBox({
+	local arena1 = mini:EditBox({
 		Parent = panel,
 
 		LabelText = "Arena 1 Frame",
@@ -240,7 +240,7 @@ function M:Init()
 	arena1.Label:SetPoint("TOPLEFT", onlyMineChk, "BOTTOMLEFT", 0, -verticalSpacing)
 	arena1.EditBox:SetPoint("TOPLEFT", arena1.Label, "BOTTOMLEFT", 4, -8)
 
-	local arena2 = mini:CreateEditBox({
+	local arena2 = mini:EditBox({
 		Parent = panel,
 
 		LabelText = "Arena 2 Frame",
@@ -257,7 +257,7 @@ function M:Init()
 	arena2.Label:SetPoint("TOPLEFT", arena1.EditBox, "BOTTOMLEFT", -4, -verticalSpacing)
 	arena2.EditBox:SetPoint("TOPLEFT", arena2.Label, "BOTTOMLEFT", 4, -8)
 
-	local arena3 = mini:CreateEditBox({
+	local arena3 = mini:EditBox({
 		Parent = panel,
 
 		LabelText = "Arena 2 Frame",
