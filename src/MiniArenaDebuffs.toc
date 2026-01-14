@@ -4,7 +4,7 @@
 ## Author: Verz
 ## Version: 1.2.1
 ## SavedVariables: MiniArenaDebuffsDB
-## IconTexture: Interface\AddOns\MiniArenaDebuffs\icon.blp
+## IconTexture: Interface\AddOns\MiniArenaDebuffs\Icon.blp
 ## X-Curse-Project-ID: 1421998
 
 Libs\LibStub\LibStub.lua
