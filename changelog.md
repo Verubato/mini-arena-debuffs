@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.0
+
+Updated icon.
+
 ## 1.2.1
 
 Fixed bug when attempting to opening options during combat in Midnight.
