@@ -135,7 +135,7 @@ local function OnHeaderEvent(header, event, arg1)
 					local durationInfo = C_UnitAuras.GetAuraDuration(u, data.auraInstanceID)
 
 					if durationInfo then
-						duration = durationInfo:GetRemainingDuration()
+						duration = durationInfo:GetTotalDuration()
 						start = durationInfo:GetStartTime()
 					end
 				elseif
