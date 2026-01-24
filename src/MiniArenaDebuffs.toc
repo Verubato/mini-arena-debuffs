@@ -1,4 +1,4 @@
-## Interface: 120001, 120000, 110207
+## Interface: 120001, 120000
 ## Title: MiniArenaDebuffs
 ## Notes: Shows debuffs on arena frames.
 ## Author: Verz

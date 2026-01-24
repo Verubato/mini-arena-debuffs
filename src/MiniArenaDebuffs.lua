@@ -34,14 +34,6 @@ local debuffBorderTextureCoords = {
 	bottom = 0.515625,
 }
 
-local function IsSecret(value)
-	if not issecretvalue then
-		return false
-	end
-
-	return issecretvalue(value)
-end
-
 local function GetSpellIcon(spellID)
 	if C_Spell and C_Spell.GetSpellTexture then
 		return C_Spell.GetSpellTexture(spellID)
@@ -89,6 +81,7 @@ end
 
 local function OnHeaderEvent(header, event, arg1)
 	local unit = header:GetAttribute("unit")
+	local filter = header:GetAttribute("filter")
 
 	if not unit then
 		return
@@ -109,53 +102,38 @@ local function OnHeaderEvent(header, event, arg1)
 			break
 		end
 
-		local icon = child.Icon or child.Texture
+		local icon = child.Icon
+		local cooldown = child.Cooldown
 
-		if not icon then
-			icon = child:CreateTexture(nil, "ARTWORK")
-			child.Texture = icon
+		if not icon or not cooldown then
+			-- invalid xml
+			break
 		end
 
 		icon:SetAllPoints(child)
 
-		local data = C_UnitAuras.GetAuraDataByIndex(unit, child:GetID(), db.Filter or dbDefaults.Filter)
+		local data = C_UnitAuras.GetAuraDataByIndex(unit, child:GetID(), filter)
 
 		if data then
 			-- this will be a secret value in midnight, but it's still usable as a parameter
 			icon:SetTexture(data.icon)
 			icon:Show()
 
-			if child.Cooldown then
-				local start
-				local duration
+			local start
+			local duration
+			local durationInfo = C_UnitAuras.GetAuraDuration(unit, data.auraInstanceID)
 
-				if C_UnitAuras.GetAuraDuration then
-					-- we're in midnight, use the new APIs
-					local u = header:GetAttribute("unit")
-					local durationInfo = C_UnitAuras.GetAuraDuration(u, data.auraInstanceID)
+			if durationInfo then
+				duration = durationInfo:GetTotalDuration()
+				start = durationInfo:GetStartTime()
+			end
 
-					if durationInfo then
-						duration = durationInfo:GetTotalDuration()
-						start = durationInfo:GetStartTime()
-					end
-				elseif
-					data.duration
-					and data.expirationTime
-					and not IsSecret(data.duration)
-					and not IsSecret(data.expirationTime)
-					and data.duration > 0
-				then
-					start = data.expirationTime - data.duration
-					duration = data.duration
-				end
-
-				if start and duration then
-					child.Cooldown:SetCooldown(start, duration)
-					child.Cooldown:Show()
-				else
-					child.Cooldown:Hide()
-					child.Cooldown:SetCooldown(0, 0)
-				end
+			if start and duration then
+				child.Cooldown:SetCooldown(start, duration)
+				child.Cooldown:Show()
+			else
+				child.Cooldown:Hide()
+				child.Cooldown:SetCooldown(0, 0)
 			end
 		else
 			icon:Hide()
@@ -176,9 +154,9 @@ local function RefreshHeaderChildSizes(header)
 
 		child:SetSize(iconSize, iconSize)
 
-		-- make sure any custom texture stays correct
-		if child.Texture then
-			child.Texture:SetAllPoints(child)
+		-- make sure the icon size stays correct
+		if child.Icon then
+			child.Icon:SetAllPoints(child)
 		end
 
 		-- keep cooldown filling the button
@@ -249,13 +227,8 @@ local function CreateSecureHeader(arenaFrame, unit, index)
 
 			self:SetWidth(iconSize)
 			self:SetHeight(iconSize)
-
-			if self.Cooldown then
-				self.Cooldown:SetDrawSwipe(true)
-				self.Cooldown:SetSwipeColor(0, 0, 0, 0.6)
-				self.Cooldown:SetDrawEdge(false)
-				self.Cooldown:SetHideCountdownNumbers(false)
-			end
+			-- disable mouse so you can still mouseover cast
+			self:EnableMouse(false)
 		]]
 	)
 
@@ -266,7 +239,7 @@ local function CreateSecureHeader(arenaFrame, unit, index)
 	return header
 end
 
-local function CreateOrUpdateHeaders()
+local function EnsureHeaders()
 	for i = 1, maxHeaders do
 		local arenaFrame = GetRealArenaFrame(i)
 		local header = headers[i]
@@ -306,15 +279,15 @@ local function CreateTestArenaFrame(i)
 	frame:SetBackdropColor(c.r, c.g, c.b, 0.9)
 	frame:SetBackdropBorderColor(0, 0, 0, 1)
 
-	frame.text = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-	frame.text:SetPoint("CENTER")
-	frame.text:SetText(("arena%d"):format(i))
-	frame.text:SetTextColor(1, 1, 1)
+	frame.Text = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	frame.Text:SetPoint("CENTER")
+	frame.Text:SetText(("arena%d"):format(i))
+	frame.Text:SetTextColor(1, 1, 1)
 
 	return frame
 end
 
-local function CreateOrUpdateTestArenaFrames()
+local function EnsureTestArenaFrames()
 	for i = 1, maxHeaders do
 		local frame = testArenaFrames[i]
 		if not frame then
@@ -405,8 +378,8 @@ local function UpdateTestHeader(frame, arenaFrame)
 	)
 end
 
-local function CreateOrUpdateTestHeaders()
-	CreateOrUpdateTestArenaFrames()
+local function EnsureTestHeaders()
+	EnsureTestArenaFrames()
 
 	for i = 1, maxHeaders do
 		local arenaFrame = GetArenaAnchorFrame(i)
@@ -458,7 +431,7 @@ local function OnAddonLoaded()
 
 	db = mini:GetSavedVars()
 
-	CreateOrUpdateHeaders()
+	EnsureHeaders()
 
 	eventsFrame = CreateFrame("Frame")
 	eventsFrame:SetScript("OnEvent", OnEvent)
@@ -473,10 +446,10 @@ function addon:Refresh()
 		return
 	end
 
-	CreateOrUpdateHeaders()
+	EnsureHeaders()
 
 	if testMode then
-		CreateOrUpdateTestHeaders()
+		EnsureTestHeaders()
 	end
 
 	for i = 1, maxHeaders do
