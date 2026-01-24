@@ -182,7 +182,7 @@ function M:Init()
 	})
 
 	pointDdl:SetWidth(dropdownWidth)
-	pointDdlLbl:SetPoint("TOPLEFT", containerXBox, "BOTTOMLEFT", -4, -verticalSpacing)
+	pointDdlLbl:SetPoint("TOPLEFT", containerX.EditBox, "BOTTOMLEFT", -4, -verticalSpacing)
 	-- no idea why by default it's off by 16 points
 	pointDdl:SetPoint("TOPLEFT", pointDdlLbl, "BOTTOMLEFT", modernDdl and 0 or -16, -8)
 
@@ -227,7 +227,7 @@ function M:Init()
 		Parent = panel,
 
 		LabelText = "Arena 1 Frame",
-		EditBoxWidth = anchorWidth,
+		Width = anchorWidth,
 		GetValue = function()
 			return tostring(db.ArenaFrame1Anchor)
 		end,
@@ -244,7 +244,7 @@ function M:Init()
 		Parent = panel,
 
 		LabelText = "Arena 2 Frame",
-		EditBoxWidth = anchorWidth,
+		Width = anchorWidth,
 		GetValue = function()
 			return tostring(db.ArenaFrame2Anchor)
 		end,
@@ -261,7 +261,7 @@ function M:Init()
 		Parent = panel,
 
 		LabelText = "Arena 2 Frame",
-		EditBoxWidth = anchorWidth,
+		Width = anchorWidth,
 		GetValue = function()
 			return tostring(db.ArenaFrame3Anchor)
 		end,
@@ -326,17 +326,6 @@ function M:Init()
 			return
 		end
 
-		if Settings and Settings.OpenToCategory then
-			if not InCombatLockdown() or mini:CanOpenOptionsDuringCombat() then
-				Settings.OpenToCategory(category:GetID())
-			else
-				mini:NotifyCombatLockdown()
-			end
-		elseif InterfaceOptionsFrame_OpenToCategory then
-			-- workaround the classic bug where the first call opens the Game interface
-			-- and a second call is required
-			InterfaceOptionsFrame_OpenToCategory(panel)
-			InterfaceOptionsFrame_OpenToCategory(panel)
-		end
+		mini:OpenSettings(category, panel)
 	end
 end
