@@ -109,6 +109,16 @@ local function GetOrCreateDialog()
 	return dialog
 end
 
+local function NilKeys(target)
+	for k, v in pairs(target) do
+		if type(v) == "table" then
+			NilKeys(v)
+		else
+			target[k] = nil
+		end
+	end
+end
+
 function M:Notify(msg, ...)
 	local formatted = string.format(msg, ...)
 	print(addonName .. " - " .. formatted)
@@ -152,6 +162,14 @@ function M:ClampInt(v, minV, maxV, fallback)
 	end
 
 	return v
+end
+
+function M:IsSecret(value)
+	if not issecretvalue then
+		return false
+	end
+
+	return issecretvalue(value)
 end
 
 function M:CanOpenOptionsDuringCombat()
@@ -343,11 +361,11 @@ function M:Divider(options)
 	label:SetText(options.Text or "")
 	label:SetPoint("CENTER", container, "CENTER")
 
-	leftLine:SetPoint("LEFT", 16, 0)
+	leftLine:SetPoint("LEFT", 0, 0)
 	leftLine:SetPoint("RIGHT", label, "LEFT", -8, 0)
 
 	rightLine:SetPoint("LEFT", label, "RIGHT", 8, 0)
-	rightLine:SetPoint("RIGHT", -16, 0)
+	rightLine:SetPoint("RIGHT", 0, 0)
 
 	return container
 end
@@ -680,6 +698,114 @@ function M:Slider(options)
 	return { Slider = slider, EditBox = box, Label = label }
 end
 
+---Creates a generic list of items
+---@param options ListOptions
+---@return ListReturn
+function M:List(options)
+	local scroll = CreateFrame("ScrollFrame", nil, options.Parent, "UIPanelScrollFrameTemplate")
+	scroll:SetPoint("TOPLEFT", 0, 0)
+	scroll:SetPoint("BOTTOMRIGHT", options.Parent, "BOTTOMRIGHT", 0, 0)
+
+	local content = CreateFrame("Frame", nil, scroll)
+	content:SetSize(1, 1)
+	scroll:SetScrollChild(content)
+
+	local rows = {}
+	local items = {}
+
+	local function RefreshScrollbar()
+		-- show scroll bar if we've reached the max visible height
+		local visibleHeight = scroll:GetHeight()
+		local contentHeight = content:GetHeight()
+
+		if contentHeight <= visibleHeight then
+			if scroll.ScrollBar then
+				scroll.ScrollBar:Hide()
+			end
+		else
+			if scroll.ScrollBar then
+				scroll.ScrollBar:Show()
+			end
+		end
+	end
+
+	local function Refresh()
+		for _, row in ipairs(rows) do
+			row:Hide()
+		end
+
+		table.sort(items)
+
+		local y = options.RowGap or -2
+
+		for i, item in ipairs(items) do
+			local row = rows[i]
+
+			if not row then
+				row = CreateFrame("Button", nil, content)
+				row:SetSize(options.RowWidth, options.RowHeight)
+
+				row.Text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+				row.Text:SetPoint("LEFT", 0, 0)
+
+				row.Remove = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+				row.Remove:SetSize(options.RemoveButtonWidth or 80, options.RowHeight - 2)
+				row.Remove:SetPoint("RIGHT", 0, 0)
+				row.Remove:SetText("Remove")
+
+				rows[i] = row
+			end
+
+			row:SetPoint("TOPLEFT", 0, y)
+			row.Text:SetText(item)
+			row:Show()
+
+			row.Remove:SetScript("OnClick", function()
+				for idx, v in ipairs(items) do
+					if v == item then
+						table.remove(items, idx)
+						break
+					end
+				end
+
+				if options.OnRemove then
+					options.OnRemove(item)
+				end
+
+				Refresh()
+			end)
+
+			y = y - options.RowHeight
+		end
+
+		content:SetHeight(math.max(1, -y + 10))
+		RefreshScrollbar()
+	end
+
+	content:HookScript("OnShow", RefreshScrollbar)
+
+	local api = {}
+
+	function api.Add(_, item)
+		table.insert(items, item)
+		Refresh()
+	end
+
+	function api.SetItems(_, newItems)
+		items = newItems or {}
+		Refresh()
+	end
+
+	function api.GetItems(_)
+		return items
+	end
+
+	api.ScrollFrame = scroll
+	api.Content = content
+
+	return api
+end
+
 ---@param options DialogOptions
 function M:ShowDialog(options)
 	if not options then
@@ -784,21 +910,62 @@ function M:GetSavedVars(defaults)
 	return vars
 end
 
-function M:ResetSavedVars(defaults)
-	local name = addonName .. "DB"
+function M:GetCharacterSavedVars(defaults)
+	local name = addonName .. "CharDB"
 	local vars = _G[name] or {}
 
-	-- don't create a new table because we're referencing that in the addon
-	-- instead clear the existing keys and return the same instance (if one existed to begin with)
-	for k in pairs(vars) do
-		vars[k] = nil
-	end
+	_G[name] = vars
 
 	if defaults then
 		return M:CopyTable(defaults, vars)
 	end
 
 	return vars
+end
+
+function M:ResetSavedVars(defaults)
+	local name = addonName .. "DB"
+	local vars = _G[name] or {}
+
+	-- don't create a new table because we're referencing that in the addon
+	-- instead clear the existing keys and return the same instance (if one existed to begin with)
+	NilKeys(vars)
+
+	if defaults then
+		return M:CopyTable(defaults, vars)
+	end
+
+	return vars
+end
+
+---Removes any erronous values from the options table.
+---@param target table the target table to clean
+---@param template table what the table should look like
+---@param cleanValues any whether or not to clean non-table values, e.g. numbers and strings
+---@param recurse any whether to recursively clean the table
+function M:CleanTable(target, template, cleanValues, recurse)
+	-- remove values that aren't ours
+	if type(target) ~= "table" or type(template) ~= "table" then
+		return
+	end
+
+	for key, value in pairs(target) do
+		local templateValue = template[key]
+
+		-- only clean non-table values if told to do so
+		if cleanValues and templateValue == nil then
+			target[key] = nil
+		end
+
+		if recurse then
+			if type(value) == "table" and type(templateValue) == "table" then
+				M:CleanTable(value, templateValue, cleanValues, recurse)
+			elseif type(value) == "table" and type(templateValue) ~= "table" then
+				-- type mismatch: reset this key to default
+				target[key] = templateValue
+			end
+		end
+	end
 end
 
 function M:ColumnWidth(columns, padding, spacingColumns)
@@ -891,3 +1058,18 @@ loader:SetScript("OnEvent", OnAddonLoaded)
 ---@class DividerOptions
 ---@field Parent table
 ---@field Text string
+
+---@class ListOptions
+---@field Parent table
+---@field RowGap number?
+---@field RowWidth number
+---@field RowHeight number
+---@field RemoveButtonWidth number?
+---@field OnRemove fun(item: any)
+
+---@class ListReturn
+---@field ScrollFrame table
+---@field Content table
+---@field Add fun(self: table, item: any)
+---@field SetItems fun(self: table, items: table)
+---@field GetItems fun(self: table): table

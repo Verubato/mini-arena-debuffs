@@ -1,273 +1,117 @@
-local _, addon = ...
----@type MiniFramework
+---@type string, Addon
+local addonName, addon = ...
 local mini = addon.Framework
+local auras = addon.Auras
+local scheduler = addon.Scheduler
+local config = addon.Config
 local eventsFrame
+---@type { table: table }
 local headers = {}
+---@type { table: table }
 local testHeaders = {}
 local testArenaFrames = {}
 local testMode = false
-local maxHeaders = 3
-local maxAuras = 40
-local questionMarkIcon = 134400
-local pendingRefresh = false
-
----@type Db
-local dbDefaults = addon.Config.DbDefaults
-
+local maxTestFrames = 3
 ---@type Db
 local db
-
+---@type Db
+local dbDefaults = config.DbDefaults
 local testSpells = {
 	33786, -- Cyclone
 	118, -- Polymorph
-	51514, -- Hex
 	3355, -- Freezing Trap
 	853, -- Hammer of Justice
 	408, -- Kidney Shot
 }
 
--- blizzard hardcoded values
-local debuffBorderTextureCoords = {
-	left = 0.296875,
-	right = 0.5703125,
-	top = 0,
-	bottom = 0.515625,
-}
-
-local function GetSpellIcon(spellID)
-	if C_Spell and C_Spell.GetSpellTexture then
-		return C_Spell.GetSpellTexture(spellID)
-	end
-
-	if not GetSpellInfo then
-		return nil
-	end
-
-	local _, _, icon = GetSpellInfo(spellID)
-	return icon
+local function GetDefaultAnchor(i)
+	return _G["CompactArenaFrameMember" .. i]
 end
 
-local function GetRealArenaFrame(i)
-	local anchor = db["ArenaFrame" .. i .. "Anchor"]
-	local default = _G["CompactArenaFrameMember" .. i]
+local function GetOverrideAnchor(i)
+	local anchor = db["Anchor" .. i]
 
 	if not anchor then
-		return default
+		return nil
 	end
 
 	local frame = _G[anchor]
 
 	if not frame then
-		mini:Notify("Bad anchor '%s' for arena frame %d.", anchor, i)
-		return default
+		mini:Notify("Bad anchor '%s' for arena%d.", anchor, i)
+		return nil
 	end
 
 	return frame
 end
 
-local function GetArenaAnchorFrame(i)
-	-- In normal mode: anchor to the real Blizzard frames.
-	-- In test mode: anchor to our fake frames, positioned over the real ones if available.
-	if not testMode then
-		return GetRealArenaFrame(i)
+local function GetAnchor(i)
+	local anchor = GetOverrideAnchor(i)
+
+	if anchor and anchor:IsVisible() then
+		return anchor
 	end
 
-	if not testArenaFrames[i] then
-		testArenaFrames[i] = CreateTestArenaFrame(i)
-	end
-
-	return testArenaFrames[i]
+	return GetDefaultAnchor(i)
 end
 
-local function OnHeaderEvent(header, event, arg1)
-	local unit = header:GetAttribute("unit")
-	local filter = header:GetAttribute("filter")
+local function AnchorHeader(header, anchor)
+	header:ClearAllPoints()
+
+	if db.SimpleMode.Enabled then
+		header:SetPoint("CENTER", anchor, "CENTER", db.SimpleMode.Offset.X, db.SimpleMode.Offset.Y)
+	else
+		header:SetPoint(
+			db.AdvancedMode.Point,
+			anchor,
+			db.AdvancedMode.RelativePoint,
+			db.AdvancedMode.Offset.X,
+			db.AdvancedMode.Offset.Y
+		)
+	end
+end
+
+local function EnsureHeader(anchor, unit)
+	unit = unit or anchor.unit or anchor:GetAttribute("unit")
 
 	if not unit then
-		return
+		return nil
 	end
 
-	if event ~= "UNIT_AURA" then
-		return
+	local header = headers[anchor]
+
+	if not header then
+		header = auras:CreateHeader(unit)
+		headers[anchor] = header
+	else
+		auras:UpdateHeader(header, unit)
 	end
 
-	if arg1 ~= unit then
-		return
-	end
-
-	for i = 1, maxAuras do
-		local child = header:GetAttribute("child" .. i)
-
-		if not child or not child:IsShown() then
-			break
-		end
-
-		local icon = child.Icon
-		local cooldown = child.Cooldown
-
-		if not icon or not cooldown then
-			-- invalid xml
-			break
-		end
-
-		icon:SetAllPoints(child)
-
-		local data = C_UnitAuras.GetAuraDataByIndex(unit, child:GetID(), filter)
-
-		if data then
-			-- this will be a secret value in midnight, but it's still usable as a parameter
-			icon:SetTexture(data.icon)
-			icon:Show()
-
-			local start
-			local duration
-			local durationInfo = C_UnitAuras.GetAuraDuration(unit, data.auraInstanceID)
-
-			if durationInfo then
-				duration = durationInfo:GetTotalDuration()
-				start = durationInfo:GetStartTime()
-			end
-
-			if start and duration then
-				child.Cooldown:SetCooldown(start, duration)
-				child.Cooldown:Show()
-			else
-				child.Cooldown:Hide()
-				child.Cooldown:SetCooldown(0, 0)
-			end
-		else
-			icon:Hide()
-		end
-	end
-end
-
-local function RefreshHeaderChildSizes(header)
-	local iconSize = tonumber(db.IconSize) or dbDefaults.IconSize
-
-	for i = 1, maxAuras do
-		local child = header:GetAttribute("child" .. i)
-
-		if not child then
-			-- children are created sequentially; if this one doesn't exist, later ones won't either
-			break
-		end
-
-		child:SetSize(iconSize, iconSize)
-
-		-- make sure the icon size stays correct
-		if child.Icon then
-			child.Icon:SetAllPoints(child)
-		end
-
-		-- keep cooldown filling the button
-		if child.Cooldown then
-			child.Cooldown:ClearAllPoints()
-			child.Cooldown:SetAllPoints(child)
-		end
-	end
-end
-
-local function UpdateHeader(header, anchorFrame, unit)
-	header:ClearAllPoints()
-	header:SetPoint(
-		db.ContainerAnchorPoint,
-		anchorFrame,
-		db.ContainerRelativePoint,
-		db.ContainerOffsetX,
-		db.ContainerOffsetY
-	)
-
-	local iconSize = tonumber(db.IconSize) or dbDefaults.IconSize
-
-	header:SetAttribute("unit", unit)
-
-	header:SetAttribute("filter", db.Filter or dbDefaults.Filter)
-
-	-- xoffset of each icon within the container is the width of the icon itself plus some padding
-	header:SetAttribute("xOffset", iconSize + (tonumber(db.IconPaddingX) or dbDefaults.IconPaddingX))
-
-	-- no yoffset padding until we wrap
-	header:SetAttribute("yOffset", 0)
-
-	header:SetAttribute("wrapAfter", tonumber(db.IconsPerRow) or dbDefaults.IconsPerRow)
-	header:SetAttribute("maxWraps", tonumber(db.Rows) or dbDefaults.Rows)
-
-	-- maintain the same x offset
-	header:SetAttribute("wrapXOffset", 0)
-
-	-- wrap the next icons upwards
-	header:SetAttribute("wrapYOffset", -iconSize - (tonumber(db.IconPaddingY) or dbDefaults.IconPaddingY))
-
-	header:SetAttribute("sortMethod", tostring(db.SortMethod or dbDefaults.SortMethod))
-
-	header:SetAttribute("x-iconSize", iconSize)
-
-	-- refresh any icon sizes that may have changed
-	RefreshHeaderChildSizes(header)
-
-	header:SetShown(not testMode)
-end
-
-local function CreateSecureHeader(arenaFrame, unit, index)
-	local header = CreateFrame("Frame", "MiniArenaDebuffsSecureHeader" .. index, UIParent, "SecureAuraHeaderTemplate")
-
-	-- use our template
-	header:SetAttribute("template", "MiniArenaDebuffsAuraButtonTemplate")
-	header:SetAttribute("point", "TOPLEFT")
-	header:SetAttribute("unit", unit)
-	header:SetAttribute("sortDirection", "+")
-	header:SetAttribute("minWidth", 1)
-	header:SetAttribute("minHeight", 1)
-
-	header:SetAttribute(
-		"initialConfigFunction",
-		[[
-			local header = self:GetParent()
-			local iconSize = header:GetAttribute("x-iconSize")
-
-			self:SetWidth(iconSize)
-			self:SetHeight(iconSize)
-			-- disable mouse so you can still mouseover cast
-			self:EnableMouse(false)
-		]]
-	)
-
-	header:HookScript("OnEvent", OnHeaderEvent)
-
-	UpdateHeader(header, arenaFrame, unit)
+	AnchorHeader(header, anchor)
+	header:Show()
 
 	return header
 end
 
 local function EnsureHeaders()
-	for i = 1, maxHeaders do
-		local arenaFrame = GetRealArenaFrame(i)
-		local header = headers[i]
+	local index = 1
+	local anchor = GetOverrideAnchor(index) or GetDefaultAnchor(index)
 
-		if not arenaFrame then
-			if header then
-				header:Hide()
-			end
-		else
-			local unit = arenaFrame.unit or ("arena" .. i)
-
-			if not header then
-				headers[i] = CreateSecureHeader(arenaFrame, unit, i)
-			else
-				UpdateHeader(header, arenaFrame, unit)
-			end
-		end
+	while anchor do
+		EnsureHeader(anchor)
+		index = index + 1
+		anchor = GetOverrideAnchor(index) or GetDefaultAnchor(index)
 	end
 end
 
-local function CreateTestArenaFrame(i)
-	local frame = CreateFrame("Frame", "MiniArenaDebuffsTestArenaFrame" .. i, UIParent, "BackdropTemplate")
+local function CreateTestFrame(i)
+	local frame = CreateFrame("Frame", addonName .. "TestFrame" .. i, UIParent, "BackdropTemplate")
 
 	-- same as the max blizzard arena frames size
 	frame:SetSize(144, 72)
 
 	local _, class = UnitClass("player")
-	local c = RAID_CLASS_COLORS[class] or NORMAL_FONT_COLOR
+	local colour = RAID_CLASS_COLORS[class] or NORMAL_FONT_COLOR
 
 	frame:SetBackdrop({
 		bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -276,7 +120,7 @@ local function CreateTestArenaFrame(i)
 		insets = { left = 2, right = 2, top = 2, bottom = 2 },
 	})
 
-	frame:SetBackdropColor(c.r, c.g, c.b, 0.9)
+	frame:SetBackdropColor(colour.r, colour.g, colour.b, 0.9)
 	frame:SetBackdropBorderColor(0, 0, 0, 1)
 
 	frame.Text = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -288,39 +132,37 @@ local function CreateTestArenaFrame(i)
 end
 
 local function EnsureTestArenaFrames()
-	for i = 1, maxHeaders do
+	for i = 1, maxTestFrames do
 		local frame = testArenaFrames[i]
+
 		if not frame then
-			testArenaFrames[i] = CreateTestArenaFrame(i)
+			testArenaFrames[i] = CreateTestFrame(i)
 			frame = testArenaFrames[i]
 		end
 
-		local real = GetRealArenaFrame(i)
-
+		local anchor = GetAnchor(i)
 		frame:ClearAllPoints()
 
-		if real and real:GetWidth() > 0 and real:GetHeight() > 0 then
-			-- sit directly on top of Blizzard arena frame
-			frame:SetAllPoints(real)
+		if anchor and anchor:GetWidth() > 0 and anchor:GetHeight() > 0 then
+			-- sit directly on top of Blizzard frames
+			frame:SetAllPoints(anchor)
 
 			-- try to keep it above the real frame
-			frame:SetFrameStrata(real:GetFrameStrata() or "DIALOG")
-			frame:SetFrameLevel((real:GetFrameLevel() or 0) + 10)
+			frame:SetFrameStrata(anchor:GetFrameStrata() or "DIALOG")
+			frame:SetFrameLevel((anchor:GetFrameLevel() or 0) + 10)
 		else
 			frame:SetSize(144, 72)
 			frame:SetPoint("CENTER", UIParent, "CENTER", 300, -i * frame:GetHeight())
 		end
-
-		frame:SetShown(testMode)
 	end
 end
 
-local function UpdateTestHeader(frame, arenaFrame)
-	local cols = math.max(1, tonumber(db.IconsPerRow) or 1)
-	local rows = math.max(1, tonumber(db.Rows) or 1)
-	local size = math.max(1, tonumber(db.IconSize) or 20)
-	local padX = tonumber(db.IconPaddingX) or 0
-	local padY = tonumber(db.IconPaddingY) or 0
+local function UpdateTestHeader(frame)
+	local cols = #testSpells
+	local rows = 1
+	local size = tonumber(db.Icons.Size) or dbDefaults.Icons.Size
+	local padX = 0
+	local padY = 0
 	local stepX = size + padX
 	local stepY = -(size + padY)
 	local maxIcons = math.min(#testSpells, cols * rows)
@@ -335,21 +177,12 @@ local function UpdateTestHeader(frame, arenaFrame)
 			btn.icon = btn:CreateTexture(nil, "ARTWORK")
 			btn.icon:SetAllPoints()
 
-			btn.border = btn:CreateTexture(nil, "OVERLAY")
-			btn.border:SetTexture("Interface\\Buttons\\UI-Debuff-Overlays")
-			btn.border:SetAllPoints()
-			btn.border:SetTexCoord(
-				debuffBorderTextureCoords.left,
-				debuffBorderTextureCoords.right,
-				debuffBorderTextureCoords.top,
-				debuffBorderTextureCoords.bottom
-			)
-
 			frame.icons[i] = btn
 		end
 
 		btn:SetSize(size, size)
-		btn.icon:SetTexture(GetSpellIcon(testSpells[i]) or questionMarkIcon)
+		local texture = C_Spell.GetSpellTexture(testSpells[i])
+		btn.icon:SetTexture(texture)
 
 		local col = (i - 1) % cols
 		local row = math.floor((i - 1) / cols)
@@ -367,52 +200,94 @@ local function UpdateTestHeader(frame, arenaFrame)
 	local width = (cols * size) + ((cols - 1) * padX)
 	local height = (rows * size) + ((rows - 1) * padY)
 	frame:SetSize(width, height)
-
-	frame:ClearAllPoints()
-	frame:SetPoint(
-		db.ContainerAnchorPoint,
-		arenaFrame,
-		db.ContainerRelativePoint,
-		db.ContainerOffsetX,
-		db.ContainerOffsetY
-	)
 end
 
-local function EnsureTestHeaders()
-	EnsureTestArenaFrames()
+local function EnsureTestHeader(anchor)
+	local header = testHeaders[anchor]
 
-	for i = 1, maxHeaders do
-		local arenaFrame = GetArenaAnchorFrame(i)
+	if not header then
+		header = CreateFrame("Frame", nil, UIParent)
+		testHeaders[anchor] = header
+	end
 
-		if arenaFrame then
-			local frame = testHeaders[i]
+	UpdateTestHeader(header)
 
-			if not frame then
-				frame = CreateFrame("Frame", nil, UIParent)
-				UpdateTestHeader(frame, arenaFrame)
-				testHeaders[i] = frame
-			else
-				UpdateTestHeader(frame, arenaFrame)
-			end
+	return header
+end
+
+local function RealMode()
+	for anchor, header in pairs(headers) do
+		local unit = header:GetAttribute("unit") or anchor.unit or anchor:GetAttribute("unit")
+
+		if unit then
+			-- refresh options
+			auras:UpdateHeader(header, unit)
 		end
+
+		-- refresh anchor
+		AnchorHeader(header, anchor)
+
+		-- refresh visibility
+		header:Show()
+	end
+
+	for _, testHeader in pairs(testHeaders) do
+		testHeader:Hide()
+	end
+
+	for _, testArenaFrame in ipairs(testArenaFrames) do
+		testArenaFrame:Hide()
 	end
 end
 
-local function QueueRefresh()
-	pendingRefresh = true
-end
+local function TestMode()
+	-- hide the real headers
+	for _, header in pairs(headers) do
+		header:Hide()
+	end
 
-local function OnEvent(_, event)
-	if event == "PLAYER_REGEN_ENABLED" then
-		if not pendingRefresh then
-			return
+	-- try to show on real frames first
+	local anyRealShown = false
+	for anchor, _ in pairs(headers) do
+		local testHeader = EnsureTestHeader(anchor)
+
+		if anchor and anchor:IsVisible() then
+			anyRealShown = true
+
+			AnchorHeader(testHeader, anchor)
+
+			testHeader:Show()
+		end
+	end
+
+	if anyRealShown then
+		-- hide our test frames if any real exist
+		for i = 1, #testArenaFrames do
+			local testArenaFrame = testArenaFrames[i]
+			testArenaFrame:Hide()
 		end
 
-		pendingRefresh = false
-		addon:Refresh()
 		return
 	end
 
+	-- no real frames, show our test frames
+	EnsureTestArenaFrames()
+
+	local anchor, testHeader = next(testHeaders)
+	for i = 1, #testArenaFrames do
+		if testHeader then
+			local testArenaFrame = testArenaFrames[i]
+
+			AnchorHeader(testHeader, testArenaFrame)
+
+			testHeader:Show()
+			testArenaFrame:Show()
+			anchor, testHeader = next(testHeaders, anchor)
+		end
+	end
+end
+
+local function OnEvent(_, event)
 	if event == "PLAYER_REGEN_DISABLED" then
 		if testMode then
 			-- disable test mode as we enter combat
@@ -424,10 +299,16 @@ local function OnEvent(_, event)
 	if event == "PLAYER_ENTERING_WORLD" then
 		addon:Refresh()
 	end
+
+	if event == "GROUP_ROSTER_UPDATE" then
+		addon:Refresh()
+	end
 end
 
 local function OnAddonLoaded()
 	addon.Config:Init()
+	addon.Scheduler:Init()
+	addon.Auras:Init()
 
 	db = mini:GetSavedVars()
 
@@ -435,35 +316,25 @@ local function OnAddonLoaded()
 
 	eventsFrame = CreateFrame("Frame")
 	eventsFrame:SetScript("OnEvent", OnEvent)
+	eventsFrame:RegisterEvent("ARENA_OPPONENT_UPDATE")
 	eventsFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-	eventsFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 	eventsFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 end
 
 function addon:Refresh()
 	if InCombatLockdown() then
-		QueueRefresh()
+		scheduler:RunWhenCombatEnds(function()
+			addon:Refresh()
+		end, "Refresh")
 		return
 	end
 
 	EnsureHeaders()
 
 	if testMode then
-		EnsureTestHeaders()
-	end
-
-	for i = 1, maxHeaders do
-		if headers[i] then
-			headers[i]:SetShown(not testMode)
-		end
-
-		if testHeaders[i] then
-			testHeaders[i]:SetShown(testMode)
-		end
-
-		if testArenaFrames[i] then
-			testArenaFrames[i]:SetShown(testMode)
-		end
+		TestMode()
+	else
+		RealMode()
 	end
 end
 
@@ -477,3 +348,11 @@ function addon:ToggleTest()
 end
 
 mini:WaitForAddonLoad(OnAddonLoaded)
+
+---@class Addon
+---@field Auras AurasModule
+---@field Framework MiniFramework
+---@field Scheduler Scheduler
+---@field Config Config
+---@field Refresh fun(self: table)
+---@field ToggleTest fun(self: table)
