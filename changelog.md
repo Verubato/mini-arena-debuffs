@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.0
+
+Added support for sarena.
+
 ## 1.4.0
 
 Fixed broken addon.
