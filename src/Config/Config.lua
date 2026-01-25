@@ -134,8 +134,8 @@ local function BuildAdvancedMode(parent)
 	local panel = CreateFrame("Frame", nil, parent)
 	local containerX = mini:Slider({
 		Parent = panel,
-		Min = -20,
-		Max = 50,
+		Min = -250,
+		Max = 250,
 		Step = 1,
 		Width = columnWidth * 2 - horizontalSpacing,
 		LabelText = "Offset X",
@@ -152,8 +152,8 @@ local function BuildAdvancedMode(parent)
 
 	local containerY = mini:Slider({
 		Parent = panel,
-		Min = -20,
-		Max = 50,
+		Min = -250,
+		Max = 250,
 		Step = 1,
 		Width = columnWidth * 2 - horizontalSpacing,
 		LabelText = "Offset Y",
