@@ -25,13 +25,19 @@ local testSpells = {
 }
 
 local function GetDefaultAnchor(i)
+	local sarena = _G["sArenaEnemyFrame" .. i]
+
+	if sarena then
+		return sarena
+	end
+
 	return _G["CompactArenaFrameMember" .. i]
 end
 
 local function GetOverrideAnchor(i)
 	local anchor = db["Anchor" .. i]
 
-	if not anchor then
+	if not anchor or anchor == "" then
 		return nil
 	end
 
@@ -69,6 +75,8 @@ local function AnchorHeader(header, anchor)
 			db.AdvancedMode.Offset.Y
 		)
 	end
+
+	header:SetFrameLevel(anchor:GetFrameLevel() + 1)
 end
 
 local function EnsureHeader(anchor, unit)
@@ -95,12 +103,12 @@ end
 
 local function EnsureHeaders()
 	local index = 1
-	local anchor = GetOverrideAnchor(index) or GetDefaultAnchor(index)
+	local anchor = GetAnchor(index)
 
 	while anchor do
 		EnsureHeader(anchor)
 		index = index + 1
-		anchor = GetOverrideAnchor(index) or GetDefaultAnchor(index)
+		anchor = GetAnchor(index)
 	end
 end
 
