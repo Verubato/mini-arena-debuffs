@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.0
+
+Fixed broken addon.
+
 ## 1.3.0
 
 Updated icon.
