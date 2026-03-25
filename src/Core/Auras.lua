@@ -48,17 +48,10 @@ local function OnHeaderEvent(header, event, arg1)
 		if data then
 			icon:SetTexture(data.icon)
 
-			local start
-			local duration
 			local durationInfo = C_UnitAuras.GetAuraDuration(unit, data.auraInstanceID)
 
 			if durationInfo then
-				start = durationInfo:GetStartTime()
-				duration = durationInfo:GetTotalDuration()
-			end
-
-			if start and duration then
-				cooldown:SetCooldown(start, duration)
+				cooldown:SetCooldownFromDurationObject(durationInfo)
 				cooldown:Show()
 			else
 				cooldown:Hide()
