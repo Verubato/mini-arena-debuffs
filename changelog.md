@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.1
+
+Updated to use the new API method from Blizzard.
+
 ## 1.5.0
 
 Added support for sarena.
