@@ -31,6 +31,11 @@ local function GetDefaultAnchor(i)
 		return sarena
 	end
 
+	-- If sArena is running, don't fall back to Blizzard frames as they will be invisible
+	if _G["sArenaEnemyFrame1"] then
+		return nil
+	end
+
 	return _G["CompactArenaFrameMember" .. i]
 end
 
