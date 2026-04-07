@@ -22,7 +22,7 @@ local db
 
 ---@class Db
 local dbDefaults = {
-	Version = 2,
+	Version = 3,
 
 	SortMethod = "TIME",
 	SortDirection = "+",
@@ -56,9 +56,9 @@ local dbDefaults = {
 	IconsPerRow = 6,
 	Rows = 1,
 
-	Anchor1 = "CompactArenaFrameMember1",
-	Anchor2 = "CompactArenaFrameMember2",
-	Anchor3 = "CompactArenaFrameMember3",
+	Anchor1 = "",
+	Anchor2 = "",
+	Anchor3 = "",
 }
 
 ---@class Config
@@ -75,6 +75,16 @@ local function GetAndUpgradeDb()
 		vars.SimpleMode.Enabled = true
 		vars.Version = 2
 		mini:CleanTable(db, dbDefaults, true, true)
+	end
+
+	if vars.Version == 2 then
+		for i = 1, 3 do
+			local key = "Anchor" .. i
+			if vars[key] == "CompactArenaFrameMember" .. i then
+				vars[key] = ""
+			end
+		end
+		vars.Version = 3
 	end
 
 	return vars
