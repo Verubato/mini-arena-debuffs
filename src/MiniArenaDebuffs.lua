@@ -106,14 +106,23 @@ local function EnsureHeader(anchor, unit)
 	return header
 end
 
-local function EnsureHeaders()
+local function GetCurrentAnchors()
+	local anchors = {}
 	local index = 1
 	local anchor = GetAnchor(index)
 
 	while anchor do
-		EnsureHeader(anchor)
+		anchors[index] = anchor
 		index = index + 1
 		anchor = GetAnchor(index)
+	end
+
+	return anchors
+end
+
+local function EnsureHeaders()
+	for _, anchor in ipairs(GetCurrentAnchors()) do
+		EnsureHeader(anchor)
 	end
 end
 
@@ -229,19 +238,28 @@ local function EnsureTestHeader(anchor)
 end
 
 local function RealMode()
+	local currentAnchors = {}
+	for _, anchor in ipairs(GetCurrentAnchors()) do
+		currentAnchors[anchor] = true
+	end
+
 	for anchor, header in pairs(headers) do
-		local unit = header:GetAttribute("unit") or anchor.unit or anchor:GetAttribute("unit")
+		if not currentAnchors[anchor] then
+			header:Hide()
+		else
+			local unit = header:GetAttribute("unit") or anchor.unit or anchor:GetAttribute("unit")
 
-		if unit then
-			-- refresh options
-			auras:UpdateHeader(header, unit)
+			if unit then
+				-- refresh options
+				auras:UpdateHeader(header, unit)
+			end
+
+			-- refresh anchor
+			AnchorHeader(header, anchor)
+
+			-- refresh visibility
+			header:Show()
 		end
-
-		-- refresh anchor
-		AnchorHeader(header, anchor)
-
-		-- refresh visibility
-		header:Show()
 	end
 
 	for _, testHeader in pairs(testHeaders) do
@@ -261,10 +279,10 @@ local function TestMode()
 
 	-- try to show on real frames first
 	local anyRealShown = false
-	for anchor, _ in pairs(headers) do
+	for _, anchor in ipairs(GetCurrentAnchors()) do
 		local testHeader = EnsureTestHeader(anchor)
 
-		if anchor and anchor:IsVisible() then
+		if anchor:IsVisible() then
 			anyRealShown = true
 
 			AnchorHeader(testHeader, anchor)
