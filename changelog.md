@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.3
+
+Another fix for showing on Blizzard frames when sArena is enabled.
+
 ## 1.5.2
 
 Fixed showing on Blizzard frames when sArena is enabled.
