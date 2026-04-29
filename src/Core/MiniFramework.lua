@@ -15,7 +15,6 @@ local M = {
 addon.Framework = M
 
 local function AddControlForRefresh(panel, control)
-	-- store controls for refresh behaviour
 	panel.MiniControls = panel.MiniControls or {}
 	panel.MiniControls[#panel.MiniControls + 1] = control
 
@@ -28,6 +27,10 @@ local function AddControlForRefresh(panel, control)
 			if c.MiniRefresh then
 				c:MiniRefresh()
 			end
+		end
+
+		if panel.OnMiniRefresh then
+			panel:OnMiniRefresh()
 		end
 	end
 end
@@ -45,15 +48,11 @@ local function ConfigureNumbericBox(box, allowNegative)
 
 		local text = boxSelf:GetText()
 
-		-- allow: "", "-", "-123", "123"
 		if text == "" or text == "-" or text:match("^%-?%d+$") then
 			return
 		end
 
-		-- strip invalid chars
 		text = text:gsub("[^%d%-]", "")
-
-		-- only one leading '-'
 		text = text:gsub("%-+", "-")
 
 		if text:sub(1, 1) ~= "-" then
@@ -92,9 +91,20 @@ local function GetOrCreateDialog()
 	})
 	dialog:SetBackdropColor(0, 0, 0, 0.9)
 
+	dialog.Title = dialog:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+	dialog.Title:SetPoint("TOP", dialog, "TOP", 0, -8)
+	dialog.Title:SetText("Notification")
+	dialog.Title:SetTextColor(1, 0.82, 0)
+
+	dialog.TitleDivider = dialog:CreateTexture(nil, "ARTWORK")
+	dialog.TitleDivider:SetHeight(1)
+	dialog.TitleDivider:SetPoint("TOPLEFT", dialog, "TOPLEFT", 8, -28)
+	dialog.TitleDivider:SetPoint("TOPRIGHT", dialog, "TOPRIGHT", -8, -28)
+	dialog.TitleDivider:SetColorTexture(1, 1, 1, 0.15)
+
 	dialog.Text = dialog:CreateFontString(nil, "ARTWORK", "GameFontHighlightLarge")
-	dialog.Text:SetPoint("TOPLEFT", 12, -12)
-	dialog.Text:SetPoint("TOPRIGHT", -12, -12)
+	dialog.Text:SetPoint("TOPLEFT", 12, -40)
+	dialog.Text:SetPoint("TOPRIGHT", -12, -40)
 	dialog.Text:SetJustifyH("LEFT")
 	dialog.Text:SetJustifyV("TOP")
 
@@ -144,6 +154,14 @@ function M:CopyTable(src, dst)
 	return dst
 end
 
+function M:CopyValueOrTable(src)
+	if type(src) ~= "table" then
+		return src
+	end
+
+	return M:CopyTable(src)
+end
+
 function M:ClampInt(v, minV, maxV, fallback)
 	v = tonumber(v)
 
@@ -152,6 +170,24 @@ function M:ClampInt(v, minV, maxV, fallback)
 	end
 
 	v = math.floor(v + 0.5)
+
+	if v < minV then
+		return minV
+	end
+
+	if v > maxV then
+		return maxV
+	end
+
+	return v
+end
+
+function M:ClampFloat(v, minV, maxV, fallback)
+	v = tonumber(v)
+
+	if not v then
+		return fallback
+	end
 
 	if v < minV then
 		return minV
@@ -249,7 +285,6 @@ function M:WireTabNavigation(controls)
 			local backwards = IsShiftKeyDown()
 			local nextIndex = i + (backwards and -1 or 1)
 
-			-- wrap around
 			if nextIndex < 1 then
 				nextIndex = #controls
 			elseif nextIndex > #controls then
@@ -315,7 +350,6 @@ function M:TextBlock(options)
 			Font = options.Font,
 		})
 
-		-- spacing between lines
 		local gap = (i == 1) and 0 or (verticalSpacing / 2)
 
 		if i == 1 then
@@ -347,25 +381,26 @@ function M:Divider(options)
 	end
 
 	local container = CreateFrame("Frame", nil, options.Parent)
-	container:SetHeight(20)
+	container:SetHeight(26)
 
 	local leftLine = container:CreateTexture(nil, "ARTWORK")
 	leftLine:SetColorTexture(1, 1, 1, 0.15)
-	leftLine:SetHeight(1)
+	PixelUtil.SetHeight(leftLine, 1)
 
 	local rightLine = container:CreateTexture(nil, "ARTWORK")
 	rightLine:SetColorTexture(1, 1, 1, 0.15)
-	rightLine:SetHeight(1)
+	PixelUtil.SetHeight(rightLine, 1)
 
-	local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	label:SetText(options.Text or "")
+	label:SetTextColor(1, 1, 1, 1)
 	label:SetPoint("CENTER", container, "CENTER")
 
-	leftLine:SetPoint("LEFT", 0, 0)
-	leftLine:SetPoint("RIGHT", label, "LEFT", -8, 0)
+	PixelUtil.SetPoint(leftLine, "LEFT", container, "LEFT", 0, 0)
+	PixelUtil.SetPoint(leftLine, "RIGHT", label, "LEFT", -8, 0)
 
-	rightLine:SetPoint("LEFT", label, "RIGHT", 8, 0)
-	rightLine:SetPoint("RIGHT", 0, 0)
+	PixelUtil.SetPoint(rightLine, "LEFT", label, "RIGHT", 8, 0)
+	PixelUtil.SetPoint(rightLine, "RIGHT", container, "RIGHT", 0, 0)
 
 	return container
 end
@@ -453,6 +488,9 @@ function M:Dropdown(options)
 
 		function dd.MiniRefresh(ddSelf)
 			ddSelf:Update()
+			local value = options.GetValue()
+			local text = options.GetText and options.GetText(value) or tostring(value)
+			ddSelf:SetText(text)
 		end
 
 		AddControlForRefresh(options.Parent, dd)
@@ -460,11 +498,10 @@ function M:Dropdown(options)
 		return dd, true
 	end
 
-	local libDD = LibStub and LibStub:GetLibrary("LibUIDropDownMenu-4.0", false)
+	local libDD = LibStub and LibStub:GetLibrary("LibUIDropDownMenu-4.0", true)
 
 	if libDD then
-		-- needs a name to not bug out
-		local dd = libDD:Create_UIDropDownMenu("MiniArenaDebuffsDropdown" .. dropDownId, options.Parent)
+		local dd = libDD:Create_UIDropDownMenu(addonName .. "Dropdown" .. dropDownId, options.Parent)
 		dropDownId = dropDownId + 1
 
 		libDD:UIDropDownMenu_Initialize(dd, function()
@@ -479,7 +516,6 @@ function M:Dropdown(options)
 
 				local id = dd:GetID(info)
 
-				-- onclick handler
 				info.func = function()
 					local text = options.GetText and options.GetText(value) or tostring(value)
 
@@ -508,9 +544,9 @@ function M:Dropdown(options)
 		return dd, false
 	end
 
-	-- UIDropDownMenuTemplate is nil, but still usable
 	if UIDropDownMenu_Initialize then
-		local dd = CreateFrame("Frame", name, options.Parent, "UIDropDownMenuTemplate")
+		local dd = CreateFrame("Frame", addonName .. "Dropdown" .. dropDownId, options.Parent, "UIDropDownMenuTemplate")
+		dropDownId = dropDownId + 1
 
 		UIDropDownMenu_Initialize(dd, function()
 			for _, value in ipairs(options.Items) do
@@ -522,7 +558,6 @@ function M:Dropdown(options)
 					return options.GetValue() == value
 				end
 
-				-- onclick handler
 				info.func = function()
 					local text = options.GetText and options.GetText(value) or tostring(value)
 					local id = dd:GetID(info)
@@ -530,12 +565,12 @@ function M:Dropdown(options)
 					UIDropDownMenu_SetSelectedID(dd, id)
 					UIDropDownMenu_SetText(dd, text)
 
-					setSelected(value)
+					options.SetValue(value)
 				end
 
 				UIDropDownMenu_AddButton(info, 1)
 
-				if getValue() == value then
+				if options.GetValue() == value then
 					local id = dd:GetID(info)
 					UIDropDownMenu_SetSelectedID(dd, id)
 				end
@@ -575,14 +610,17 @@ function M:Checkbox(options)
 	checkbox:HookScript("OnClick", function()
 		options.SetValue(checkbox:GetChecked())
 
-		-- check the value changed at the source
 		checkbox:SetChecked(options.GetValue())
 	end)
 
 	if options.Tooltip then
 		checkbox:SetScript("OnEnter", function(chkSelf)
 			GameTooltip:SetOwner(chkSelf, "ANCHOR_RIGHT")
-			GameTooltip:SetText(options.LabelText, 1, 0.82, 0)
+			local tooltipTitle = options.LabelText
+			if not tooltipTitle or tooltipTitle:match("^%s*$") then
+				tooltipTitle = "Information"
+			end
+			GameTooltip:SetText(tooltipTitle, 1, 0.82, 0)
 			GameTooltip:AddLine(options.Tooltip, 1, 1, 1, true)
 			GameTooltip:Show()
 		end)
@@ -623,7 +661,7 @@ function M:Slider(options)
 	local slider = CreateFrame("Slider", addonName .. "Slider" .. sliderId, options.Parent, "OptionsSliderTemplate")
 	sliderId = sliderId + 1
 
-	local label = slider:CreateFontString(nil, "ARTWORK", "GameFontWhite")
+	local label = slider:CreateFontString(nil, "ARTWORK", "GameFontNormal")
 	label:SetPoint("BOTTOMLEFT", slider, "TOPLEFT", 0, 8)
 	label:SetText(options.LabelText)
 
@@ -643,14 +681,47 @@ function M:Slider(options)
 		high:SetText(options.Max)
 	end
 
-	local box = CreateFrame("EditBox", nil, options.Parent, "InputBoxTemplate")
-	ConfigureNumbericBox(box, options.Min < 0)
+	local text = _G[slider:GetName() .. "Text"]
+	if text then
+		text:Hide()
+	end
+
+	local hasFloat = math.floor(options.Step) ~= options.Step
+
+	local function GetDecimalPlaces(step)
+		local s = tostring(step)
+		local dot = s:find("%.")
+		if not dot then
+			return 0
+		end
+		return #s - dot
+	end
+
+	local function GetMaxLetters(min, max, step)
+		local decimals = GetDecimalPlaces(step)
+		local maxAbs = math.max(math.abs(min), math.abs(max))
+		local intDigits = #tostring(math.floor(maxAbs))
+		local letters = intDigits
+		if decimals > 0 then
+			letters = letters + 1 + decimals
+		end
+		if min < 0 then
+			letters = letters + 1
+		end
+		return letters
+	end
+
+	local box = CreateFrame("EditBox", nil, slider, "InputBoxTemplate")
+
+	if not hasFloat then
+		ConfigureNumbericBox(box, options.Min < 0)
+	end
 
 	box:SetPoint("CENTER", slider, "CENTER", 0, 30)
 	box:SetFontObject("GameFontWhite")
 	box:SetSize(50, 20)
 	box:SetAutoFocus(false)
-	box:SetMaxLetters(math.log(options.Max, 10) + 1)
+	box:SetMaxLetters(GetMaxLetters(options.Min, options.Max, options.Step))
 	box:SetText(tostring(options.GetValue()))
 	box:SetJustifyH("CENTER")
 	box:SetCursorPosition(0)
@@ -672,7 +743,6 @@ function M:Slider(options)
 
 		local value = tonumber(box:GetText())
 
-		-- don't clamp values here, because they might still be typing out a number
 		if not value then
 			return
 		end
@@ -714,7 +784,6 @@ function M:List(options)
 	local items = {}
 
 	local function RefreshScrollbar()
-		-- show scroll bar if we've reached the max visible height
 		local visibleHeight = scroll:GetHeight()
 		local contentHeight = content:GetHeight()
 
@@ -818,16 +887,19 @@ function M:ShowDialog(options)
 
 	local dlg = GetOrCreateDialog()
 
-	if options.Width then
-		dlg:SetWidth(options.Width)
-	end
+	local width = options.Width or 360
+	dlg:SetWidth(width)
 
-	if options.Height then
-		dlg:SetHeight(options.Height)
-	end
-
+	dlg.Title:SetText(options.Title or "Notification")
+	dlg.Text:SetWidth(width - 40)
 	dlg.Text:SetText(options.Text)
+	dlg.Text:SetWordWrap(true)
 
+	local textHeight = dlg.Text:GetStringHeight()
+	local paddingTop = 70
+	local paddingBottom = 40
+
+	dlg:SetHeight(textHeight + paddingTop + paddingBottom)
 	dlg:ClearAllPoints()
 	dlg:SetPoint("CENTER", UIParent, "CENTER")
 	dlg:Show()
@@ -878,8 +950,6 @@ function M:OpenSettings(category, panel)
 			M:NotifyCombatLockdown()
 		end
 	elseif InterfaceOptionsFrame_OpenToCategory then
-		-- workaround the classic bug where the first call opens the Game interface
-		-- and a second call is required
 		InterfaceOptionsFrame_OpenToCategory(panel)
 		InterfaceOptionsFrame_OpenToCategory(panel)
 	end
@@ -927,8 +997,6 @@ function M:ResetSavedVars(defaults)
 	local name = addonName .. "DB"
 	local vars = _G[name] or {}
 
-	-- don't create a new table because we're referencing that in the addon
-	-- instead clear the existing keys and return the same instance (if one existed to begin with)
 	NilKeys(vars)
 
 	if defaults then
@@ -938,13 +1006,12 @@ function M:ResetSavedVars(defaults)
 	return vars
 end
 
----Removes any erronous values from the options table.
+---Removes any erroneous values from the options table.
 ---@param target table the target table to clean
 ---@param template table what the table should look like
----@param cleanValues any whether or not to clean non-table values, e.g. numbers and strings
+---@param cleanValues any whether or not to clean non-table values
 ---@param recurse any whether to recursively clean the table
 function M:CleanTable(target, template, cleanValues, recurse)
-	-- remove values that aren't ours
 	if type(target) ~= "table" or type(template) ~= "table" then
 		return
 	end
@@ -952,25 +1019,18 @@ function M:CleanTable(target, template, cleanValues, recurse)
 	for key, value in pairs(target) do
 		local templateValue = template[key]
 
-		-- only clean non-table values if told to do so
 		if cleanValues and templateValue == nil then
 			target[key] = nil
-		end
-
-		if recurse then
-			if type(value) == "table" and type(templateValue) == "table" then
-				M:CleanTable(value, templateValue, cleanValues, recurse)
-			elseif type(value) == "table" and type(templateValue) ~= "table" then
-				-- type mismatch: reset this key to default
-				target[key] = templateValue
-			end
+		elseif cleanValues and type(value) == "table" and type(templateValue) ~= "table" then
+			target[key] = templateValue
+		elseif recurse and type(value) == "table" and type(templateValue) == "table" then
+			M:CleanTable(value, templateValue, cleanValues, recurse)
 		end
 	end
 end
 
 function M:ColumnWidth(columns, padding, spacingColumns)
-	local settingsWidth, _ = M:SettingsSize()
-	-- add padding to the left and right
+	local settingsWidth = M.ContentWidth or (select(1, M:SettingsSize()))
 	local usableWidth = settingsWidth - (padding * 2)
 	local width = math.floor(usableWidth / (columns + spacingColumns))
 
@@ -1051,9 +1111,9 @@ loader:SetScript("OnEvent", OnAddonLoaded)
 ---@field VerticalSpacing number?
 
 ---@class DialogOptions
+---@field Title string?
 ---@field Text string
 ---@field Width number?
----@field Height number?
 
 ---@class DividerOptions
 ---@field Parent table

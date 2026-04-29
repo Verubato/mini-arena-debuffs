@@ -2,17 +2,9 @@
 local addonName, addon = ...
 local mini = addon.Framework
 local dropdownWidth = 200
-local anchorPoints = {
-	"TOPLEFT",
-	"TOP",
-	"TOPRIGHT",
-	"LEFT",
-	"CENTER",
-	"RIGHT",
-	"BOTTOMLEFT",
-	"BOTTOM",
-	"BOTTOMRIGHT",
-}
+local growOptions = { "RIGHT", "LEFT", "CENTER" }
+local sortMethods = { "INDEX", "TIME" }
+local sortDirections = { "+", "-" }
 local verticalSpacing = mini.VerticalSpacing
 local horizontalSpacing = mini.HorizontalSpacing
 local columns = 4
@@ -22,24 +14,16 @@ local db
 
 ---@class Db
 local dbDefaults = {
-	Version = 3,
+	Version = 5,
 
-	SortMethod = "TIME",
+	SortMethod = "INDEX",
 	SortDirection = "+",
 
-	SimpleMode = {
-		Enabled = true,
-		Offset = {
-			X = 0,
-			Y = 0,
-		},
-	},
+	Grow = "RIGHT",
 
-	AdvancedMode = {
-		Point = "TOPLEFT",
-		RelativePoint = "TOPRIGHT",
+	Anchor = {
 		Offset = {
-			X = 2,
+			X = 60,
 			Y = 0,
 		},
 	},
@@ -47,14 +31,12 @@ local dbDefaults = {
 	---@class IconOptions
 	Icons = {
 		Size = 36,
-		Padding = {
-			X = 2,
-			Y = 0,
-		},
+		Spacing = 0,
+		ReverseCooldown = false,
+		HideSwipe = false,
 	},
 
-	IconsPerRow = 6,
-	Rows = 1,
+	MaxIcons = 6,
 
 	Anchor1 = "",
 	Anchor2 = "",
@@ -71,12 +53,15 @@ addon.Config = M
 local function GetAndUpgradeDb()
 	local vars = mini:GetSavedVars(dbDefaults)
 
+	-- v1 -> v2
 	if not vars.Version or vars.Version == 1 then
+		vars.SimpleMode = vars.SimpleMode or {}
 		vars.SimpleMode.Enabled = true
 		vars.Version = 2
-		mini:CleanTable(db, dbDefaults, true, true)
+		mini:CleanTable(vars, dbDefaults, true, true)
 	end
 
+	-- v2 -> v3: clear default anchor overrides
 	if vars.Version == 2 then
 		for i = 1, 3 do
 			local key = "Anchor" .. i
@@ -85,6 +70,65 @@ local function GetAndUpgradeDb()
 			end
 		end
 		vars.Version = 3
+	end
+
+	-- v3 -> v4: collapse SimpleMode/AdvancedMode, rename padding -> spacing, add new fields
+	if vars.Version == 3 then
+		-- Migrate anchor from old modes
+		if not vars.Anchor then
+			if vars.SimpleMode and vars.SimpleMode.Enabled then
+				vars.Anchor = {
+					Point = "CENTER",
+					RelativePoint = "CENTER",
+					Offset = {
+						X = (vars.SimpleMode.Offset and vars.SimpleMode.Offset.X) or 0,
+						Y = (vars.SimpleMode.Offset and vars.SimpleMode.Offset.Y) or 0,
+					},
+				}
+			elseif vars.AdvancedMode then
+				vars.Anchor = {
+					Point = vars.AdvancedMode.Point or "TOPLEFT",
+					RelativePoint = vars.AdvancedMode.RelativePoint or "TOPRIGHT",
+					Offset = {
+						X = (vars.AdvancedMode.Offset and vars.AdvancedMode.Offset.X) or 2,
+						Y = (vars.AdvancedMode.Offset and vars.AdvancedMode.Offset.Y) or 0,
+					},
+				}
+			end
+		end
+
+		-- Migrate padding.X -> spacing
+		if vars.Icons and vars.Icons.Padding then
+			vars.Icons.Spacing = vars.Icons.Padding.X or 2
+			vars.Icons.Padding = nil
+		end
+
+		-- Migrate IconsPerRow -> MaxIcons
+		if vars.IconsPerRow and not vars.MaxIcons then
+			vars.MaxIcons = vars.IconsPerRow
+			vars.IconsPerRow = nil
+		end
+
+		-- Remove obsolete fields
+		vars.SimpleMode = nil
+		vars.AdvancedMode = nil
+		vars.Rows = nil
+		vars.GrowDirection = vars.GrowDirection or "RIGHT"
+
+		vars.Version = 4
+		mini:CleanTable(vars, dbDefaults, true, true)
+	end
+
+	-- v4 -> v5: rename GrowDirection -> Grow; remove Anchor.Point/RelativePoint
+	if vars.Version == 4 then
+		vars.Grow = vars.GrowDirection or "RIGHT"
+		vars.GrowDirection = nil
+		if vars.Anchor then
+			vars.Anchor.Point = nil
+			vars.Anchor.RelativePoint = nil
+		end
+		vars.Version = 5
+		mini:CleanTable(vars, dbDefaults, true, true)
 	end
 
 	return vars
@@ -97,191 +141,6 @@ local function ApplySettings()
 	end
 
 	addon:Refresh()
-end
-
-local function BuildSimpleMode(parent)
-	local panel = CreateFrame("Frame", nil, parent)
-	local containerX = mini:Slider({
-		Parent = panel,
-		Min = -250,
-		Max = 250,
-		Step = 1,
-		Width = columnWidth * 2 - horizontalSpacing,
-		LabelText = "Offset X",
-		GetValue = function()
-			return db.SimpleMode.Offset.X
-		end,
-		SetValue = function(v)
-			db.SimpleMode.Offset.X = mini:ClampInt(v, -250, 250, dbDefaults.SimpleMode.Offset.X)
-			ApplySettings()
-		end,
-	})
-
-	containerX.Slider:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
-
-	local containerY = mini:Slider({
-		Parent = panel,
-		Min = -250,
-		Max = 250,
-		Step = 1,
-		Width = columnWidth * 2 - horizontalSpacing,
-		LabelText = "Offset Y",
-		GetValue = function()
-			return db.SimpleMode.Offset.Y
-		end,
-		SetValue = function(v)
-			db.SimpleMode.Offset.Y = mini:ClampInt(v, -250, 250, dbDefaults.SimpleMode.Offset.Y)
-			ApplySettings()
-		end,
-	})
-
-	containerY.Slider:SetPoint("LEFT", containerX.Slider, "RIGHT", horizontalSpacing, 0)
-
-	return panel
-end
-
-local function BuildAdvancedMode(parent)
-	local panel = CreateFrame("Frame", nil, parent)
-	local containerX = mini:Slider({
-		Parent = panel,
-		Min = -250,
-		Max = 250,
-		Step = 1,
-		Width = columnWidth * 2 - horizontalSpacing,
-		LabelText = "Offset X",
-		GetValue = function()
-			return db.AdvancedMode.Offset.X
-		end,
-		SetValue = function(v)
-			db.AdvancedMode.Offset.X = mini:ClampInt(v, -50, 50, dbDefaults.AdvancedMode.Offset.X)
-			ApplySettings()
-		end,
-	})
-
-	containerX.Slider:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
-
-	local containerY = mini:Slider({
-		Parent = panel,
-		Min = -250,
-		Max = 250,
-		Step = 1,
-		Width = columnWidth * 2 - horizontalSpacing,
-		LabelText = "Offset Y",
-		GetValue = function()
-			return db.AdvancedMode.Offset.Y
-		end,
-		SetValue = function(v)
-			db.AdvancedMode.Offset.Y = mini:ClampInt(v, -200, 200, dbDefaults.AdvancedMode.Offset.Y)
-			ApplySettings()
-		end,
-	})
-
-	containerY.Slider:SetPoint("LEFT", containerX.Slider, "RIGHT", horizontalSpacing, 0)
-
-	local pointDdlLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	pointDdlLbl:SetText("Anchor Point")
-
-	local pointDdl, modernDdl = mini:Dropdown({
-		Parent = panel,
-		Items = anchorPoints,
-		Width = columnWidth,
-		GetValue = function()
-			return db.AdvancedMode.Point
-		end,
-		SetValue = function(value)
-			if db.AdvancedMode.Point ~= value then
-				db.AdvancedMode.Point = value
-				ApplySettings()
-			end
-		end,
-	})
-
-	pointDdl:SetWidth(dropdownWidth)
-	pointDdlLbl:SetPoint("TOPLEFT", containerX.Slider, "BOTTOMLEFT", -4, -verticalSpacing)
-	-- no idea why by default it's off by 16 points
-	pointDdl:SetPoint("TOPLEFT", pointDdlLbl, "BOTTOMLEFT", modernDdl and 0 or -16, -8)
-
-	local relativeToLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	relativeToLbl:SetText("Relative to")
-
-	local relativeToDdl = mini:Dropdown({
-		Parent = panel,
-		Items = anchorPoints,
-		Width = columnWidth,
-		GetValue = function()
-			return db.AdvancedMode.RelativePoint
-		end,
-		SetValue = function(value)
-			if db.AdvancedMode.RelativePoint ~= value then
-				db.AdvancedMode.RelativePoint = value
-				ApplySettings()
-			end
-		end,
-	})
-
-	relativeToDdl:SetWidth(dropdownWidth)
-	relativeToDdl:SetPoint("LEFT", pointDdl, "RIGHT", horizontalSpacing, 0)
-	relativeToLbl:SetPoint("BOTTOMLEFT", relativeToDdl, "TOPLEFT", 0, 8)
-
-	local anchorsSlider = mini:Divider({
-		Parent = panel,
-		Text = "Custom Anchors (e.g. ElvUI, GladiusEx)",
-	})
-
-	anchorsSlider:SetPoint("LEFT", panel, "LEFT")
-	anchorsSlider:SetPoint("RIGHT", panel, "RIGHT", -horizontalSpacing, 0)
-	anchorsSlider:SetPoint("TOP", relativeToLbl, "BOTTOM", 0, -verticalSpacing * 3)
-
-	local anchorWidth = columnWidth * 3
-	local arena1 = mini:EditBox({
-		Parent = panel,
-		LabelText = "Arena1 Frame",
-		Width = anchorWidth,
-		GetValue = function()
-			return tostring(db.Anchor1)
-		end,
-		SetValue = function(v)
-			db.Anchor1 = tostring(v)
-			ApplySettings()
-		end,
-	})
-
-	arena1.Label:SetPoint("TOPLEFT", anchorsSlider, "BOTTOMLEFT", 0, -verticalSpacing)
-	arena1.EditBox:SetPoint("TOPLEFT", arena1.Label, "BOTTOMLEFT", 4, -8)
-
-	local arena2 = mini:EditBox({
-		Parent = panel,
-		LabelText = "Arena2 Frame",
-		Width = anchorWidth,
-		GetValue = function()
-			return tostring(db.Anchor2)
-		end,
-		SetValue = function(v)
-			db.Anchor2 = tostring(v)
-			ApplySettings()
-		end,
-	})
-
-	arena2.Label:SetPoint("TOPLEFT", arena1.EditBox, "BOTTOMLEFT", -4, -verticalSpacing)
-	arena2.EditBox:SetPoint("TOPLEFT", arena2.Label, "BOTTOMLEFT", 4, -8)
-
-	local arena3 = mini:EditBox({
-		Parent = panel,
-		LabelText = "Arena3 Frame",
-		Width = anchorWidth,
-		GetValue = function()
-			return tostring(db.Anchor3)
-		end,
-		SetValue = function(v)
-			db.Anchor3 = tostring(v)
-			ApplySettings()
-		end,
-	})
-
-	arena3.Label:SetPoint("TOPLEFT", arena2.EditBox, "BOTTOMLEFT", -4, -verticalSpacing)
-	arena3.EditBox:SetPoint("TOPLEFT", arena3.Label, "BOTTOMLEFT", 4, -8)
-
-	return panel
 end
 
 function M:Init()
@@ -310,49 +169,19 @@ function M:Init()
 
 	lines:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
 
-	local simpleMode = BuildSimpleMode(panel)
-	local advancedMode = BuildAdvancedMode(panel)
+	-- Icons
 
-	local function SetMode()
-		if db.SimpleMode.Enabled then
-			simpleMode:Show()
-			advancedMode:Hide()
-		else
-			advancedMode:Show()
-			simpleMode:Hide()
-		end
-	end
-
-	local simpleChk = mini:Checkbox({
-		Parent = panel,
-		LabelText = "Simple settings",
-		GetValue = function()
-			return db.SimpleMode.Enabled
-		end,
-		SetValue = function(value)
-			db.SimpleMode.Enabled = value
-
-			SetMode()
-		end,
-	})
-
-	simpleChk:SetPoint("TOPLEFT", lines, "BOTTOMLEFT", -4, -verticalSpacing)
-
-	local positionDivider = mini:Divider({
-		Parent = panel,
-		Text = "Size & Position",
-	})
-
-	positionDivider:SetPoint("LEFT", panel, "LEFT")
-	positionDivider:SetPoint("RIGHT", panel, "RIGHT", -horizontalSpacing, 0)
-	positionDivider:SetPoint("TOP", simpleChk, "BOTTOM", 0, -8)
+	local iconsDivider = mini:Divider({ Parent = panel, Text = "Icons" })
+	iconsDivider:SetPoint("LEFT", panel, "LEFT")
+	iconsDivider:SetPoint("RIGHT", panel, "RIGHT", -horizontalSpacing, 0)
+	iconsDivider:SetPoint("TOP", lines, "BOTTOM", 0, -verticalSpacing)
 
 	local iconSize = mini:Slider({
 		Parent = panel,
 		Min = 10,
 		Max = 200,
-		Width = (columnWidth * columns) - horizontalSpacing,
 		Step = 1,
+		Width = columnWidth * 2 - horizontalSpacing,
 		LabelText = "Icon Size",
 		GetValue = function()
 			return db.Icons.Size
@@ -362,16 +191,184 @@ function M:Init()
 			ApplySettings()
 		end,
 	})
+	iconSize.Slider:SetPoint("TOPLEFT", iconsDivider, "BOTTOMLEFT", 0, -verticalSpacing * 3)
 
-	iconSize.Slider:SetPoint("TOPLEFT", positionDivider, "BOTTOMLEFT", 0, -verticalSpacing * 3)
+	local iconSpacing = mini:Slider({
+		Parent = panel,
+		Min = 0,
+		Max = 50,
+		Step = 1,
+		Width = columnWidth * 2 - horizontalSpacing,
+		LabelText = "Icon Spacing",
+		GetValue = function()
+			return db.Icons.Spacing
+		end,
+		SetValue = function(v)
+			db.Icons.Spacing = mini:ClampInt(v, 0, 50, dbDefaults.Icons.Spacing)
+			ApplySettings()
+		end,
+	})
+	iconSpacing.Slider:SetPoint("LEFT", iconSize.Slider, "RIGHT", horizontalSpacing * 2, 0)
 
-	simpleMode:SetPoint("TOPLEFT", iconSize.Slider, "BOTTOMLEFT", 0, -verticalSpacing * 3)
-	simpleMode:SetPoint("RIGHT", panel, "RIGHT", -horizontalSpacing, 0)
+	local maxIcons = mini:Slider({
+		Parent = panel,
+		Min = 1,
+		Max = 10,
+		Step = 1,
+		Width = columnWidth * 2 - horizontalSpacing,
+		LabelText = "Max Icons",
+		GetValue = function()
+			return db.MaxIcons
+		end,
+		SetValue = function(v)
+			db.MaxIcons = mini:ClampInt(v, 1, 10, dbDefaults.MaxIcons)
+			ApplySettings()
+		end,
+	})
+	maxIcons.Slider:SetPoint("TOPLEFT", iconSize.Slider, "BOTTOMLEFT", 0, -verticalSpacing * 3)
 
-	advancedMode:SetPoint("TOPLEFT", iconSize.Slider, "BOTTOMLEFT", 0, -verticalSpacing * 3)
-	advancedMode:SetPoint("RIGHT", panel, "RIGHT", -horizontalSpacing, 0)
+	local reverseSwipe = mini:Checkbox({
+		Parent = panel,
+		LabelText = "Reverse Swipe",
+		Tooltip = "Reverses the cooldown swipe animation direction.",
+		GetValue = function()
+			return db.Icons.ReverseCooldown
+		end,
+		SetValue = function(v)
+			db.Icons.ReverseCooldown = v
+			ApplySettings()
+		end,
+	})
+	reverseSwipe:SetPoint("TOPLEFT", maxIcons.Slider, "BOTTOMLEFT", -4, -verticalSpacing)
 
-	SetMode()
+	local hideSwipe = mini:Checkbox({
+		Parent = panel,
+		LabelText = "Hide Swipe",
+		Tooltip = "Hides the cooldown swipe animation on icons.",
+		GetValue = function()
+			return db.Icons.HideSwipe
+		end,
+		SetValue = function(v)
+			db.Icons.HideSwipe = v
+			ApplySettings()
+		end,
+	})
+	hideSwipe:SetPoint("TOPLEFT", maxIcons.Slider, "BOTTOMLEFT", columnWidth - 4, -verticalSpacing)
+
+	-- Positioning
+
+	local posDivider = mini:Divider({ Parent = panel, Text = "Positioning" })
+	posDivider:SetPoint("LEFT", panel, "LEFT")
+	posDivider:SetPoint("RIGHT", panel, "RIGHT", -horizontalSpacing, 0)
+	posDivider:SetPoint("TOP", reverseSwipe, "BOTTOM", 0, -verticalSpacing)
+
+	local growLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	growLbl:SetText("Grow")
+
+	local growDdl, modernDdl = mini:Dropdown({
+		Parent = panel,
+		Items = growOptions,
+		Width = columnWidth,
+		GetValue = function()
+			return db.Grow
+		end,
+		SetValue = function(value)
+			if db.Grow ~= value then
+				db.Grow = value
+				ApplySettings()
+			end
+		end,
+	})
+	growDdl:SetWidth(dropdownWidth)
+	growLbl:SetPoint("TOPLEFT", posDivider, "BOTTOMLEFT", 0, -verticalSpacing)
+	growDdl:SetPoint("TOPLEFT", growLbl, "BOTTOMLEFT", modernDdl and 0 or -16, -8)
+
+	local offsetX = mini:Slider({
+		Parent = panel,
+		Min = -250,
+		Max = 250,
+		Step = 1,
+		Width = columnWidth * 2 - horizontalSpacing,
+		LabelText = "Offset X",
+		GetValue = function()
+			return db.Anchor.Offset.X
+		end,
+		SetValue = function(v)
+			db.Anchor.Offset.X = mini:ClampInt(v, -250, 250, dbDefaults.Anchor.Offset.X)
+			ApplySettings()
+		end,
+	})
+	offsetX.Slider:SetPoint("TOPLEFT", growDdl, "BOTTOMLEFT", modernDdl and 0 or 16, -verticalSpacing * 3)
+
+	local offsetY = mini:Slider({
+		Parent = panel,
+		Min = -250,
+		Max = 250,
+		Step = 1,
+		Width = columnWidth * 2 - horizontalSpacing,
+		LabelText = "Offset Y",
+		GetValue = function()
+			return db.Anchor.Offset.Y
+		end,
+		SetValue = function(v)
+			db.Anchor.Offset.Y = mini:ClampInt(v, -250, 250, dbDefaults.Anchor.Offset.Y)
+			ApplySettings()
+		end,
+	})
+	offsetY.Slider:SetPoint("LEFT", offsetX.Slider, "RIGHT", horizontalSpacing, 0)
+
+	-- Sort
+
+	local sortDivider = mini:Divider({ Parent = panel, Text = "Sort" })
+	sortDivider:SetPoint("LEFT", panel, "LEFT")
+	sortDivider:SetPoint("RIGHT", panel, "RIGHT", -horizontalSpacing, 0)
+	sortDivider:SetPoint("TOP", offsetX.Slider, "BOTTOM", 0, -verticalSpacing * 2)
+
+	local sortMethodLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	sortMethodLbl:SetText("Sort Method")
+
+	local sortMethodDdl
+	sortMethodDdl, modernDdl = mini:Dropdown({
+		Parent = panel,
+		Items = sortMethods,
+		Width = columnWidth,
+		GetValue = function()
+			return db.SortMethod
+		end,
+		SetValue = function(value)
+			if db.SortMethod ~= value then
+				db.SortMethod = value
+				ApplySettings()
+			end
+		end,
+	})
+	sortMethodDdl:SetWidth(dropdownWidth)
+	sortMethodLbl:SetPoint("TOPLEFT", sortDivider, "BOTTOMLEFT", 0, -verticalSpacing)
+	sortMethodDdl:SetPoint("TOPLEFT", sortMethodLbl, "BOTTOMLEFT", modernDdl and 0 or -16, -8)
+
+	local sortDirLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	sortDirLbl:SetText("Sort Direction")
+
+	local sortDirDdl = mini:Dropdown({
+		Parent = panel,
+		Items = sortDirections,
+		Width = columnWidth,
+		GetText = function(v)
+			return v == "+" and "Ascending (+)" or "Descending (-)"
+		end,
+		GetValue = function()
+			return db.SortDirection
+		end,
+		SetValue = function(value)
+			if db.SortDirection ~= value then
+				db.SortDirection = value
+				ApplySettings()
+			end
+		end,
+	})
+	sortDirDdl:SetWidth(dropdownWidth)
+	sortDirDdl:SetPoint("LEFT", sortMethodDdl, "RIGHT", horizontalSpacing, 0)
+	sortDirLbl:SetPoint("BOTTOMLEFT", sortDirDdl, "TOPLEFT", 0, 8)
 
 	StaticPopupDialogs["MINIAD_CONFIRM"] = {
 		text = "%s",
@@ -394,7 +391,7 @@ function M:Init()
 
 	local resetBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
 	resetBtn:SetSize(120, 26)
-	resetBtn:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 0, 16)
+	resetBtn:SetPoint("TOPRIGHT", panel, "TOPRIGHT", 0, -verticalSpacing)
 	resetBtn:SetText("Reset")
 	resetBtn:SetScript("OnClick", function()
 		if InCombatLockdown() then
@@ -408,7 +405,6 @@ function M:Init()
 
 				panel:MiniRefresh()
 				addon:Refresh()
-				SetMode()
 				mini:Notify("Settings reset to default.")
 			end,
 		})
@@ -416,7 +412,7 @@ function M:Init()
 
 	local testBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
 	testBtn:SetSize(120, 26)
-	testBtn:SetPoint("LEFT", resetBtn, "RIGHT", horizontalSpacing, 0)
+	testBtn:SetPoint("RIGHT", resetBtn, "LEFT", -horizontalSpacing, 0)
 	testBtn:SetText("Test")
 	testBtn:SetScript("OnClick", function()
 		addon:ToggleTest()
@@ -430,7 +426,6 @@ function M:Init()
 	SLASH_MINIARENADEBUFFS2 = "/miniad"
 
 	SlashCmdList.MINIARENADEBUFFS = function(msg)
-		-- normalize input
 		msg = msg and msg:lower():match("^%s*(.-)%s*$") or ""
 
 		if msg == "test" then
@@ -440,4 +435,6 @@ function M:Init()
 
 		mini:OpenSettings(category, panel)
 	end
+
+	addon.CustomAnchors:Init(category)
 end
