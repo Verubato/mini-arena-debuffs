@@ -1,14 +1,14 @@
 ---@type string, Addon
 local addonName, addon = ...
 local mini = addon.Framework
-local auras = addon.Auras
+local IconSlotContainer = addon.IconSlotContainer
 local scheduler = addon.Scheduler
 local config = addon.Config
 local eventsFrame
----@type { table: table }
-local headers = {}
----@type { table: table }
-local testHeaders = {}
+---@type { Container: IconSlotContainer, Unit: string }
+local entries = {}
+---@type IconSlotContainer[]
+local testContainers = {}
 local testArenaFrames = {}
 local testMode = false
 local maxTestFrames = 3
@@ -18,11 +18,78 @@ local db
 local dbDefaults = config.DbDefaults
 local testSpells = {
 	33786, -- Cyclone
-	118, -- Polymorph
-	3355, -- Freezing Trap
-	853, -- Hammer of Justice
-	408, -- Kidney Shot
+	118,   -- Polymorph
+	3355,  -- Freezing Trap
+	853,   -- Hammer of Justice
+	408,   -- Kidney Shot
 }
+
+local filter = "HARMFUL|PLAYER"
+
+local function GetSortRule()
+	if db.SortMethod == "INDEX" then
+		return Enum.UnitAuraSortRule.Unsorted
+	end
+	return Enum.UnitAuraSortRule.Expiration
+end
+
+local function GetSortDirection()
+	if db.SortDirection == "-" then
+		return Enum.UnitAuraSortDirection.Reverse
+	end
+	return Enum.UnitAuraSortDirection.Normal
+end
+
+local function ApplyGrowDirection(container)
+	local grow = db.Grow or "RIGHT"
+	container:SetGrowDown(false)
+	container:SetInvertLayout(grow == "LEFT")
+end
+
+local function UpdateContainerOptions(container)
+	container:SetCount(db.MaxIcons or 6)
+	container:SetIconSize(db.Icons.Size or 36)
+	container:SetSpacing(db.Icons.Spacing or 2)
+	ApplyGrowDirection(container)
+end
+
+local function CreateContainer()
+	local container = IconSlotContainer:New(
+		UIParent,
+		db.MaxIcons or 6,
+		db.Icons.Size or 36,
+		db.Icons.Spacing or 2,
+		"MiniArenaDebuffs"
+	)
+	container.Frame:Hide()
+	ApplyGrowDirection(container)
+	return container
+end
+
+local function UpdateContainer(container, unit)
+	if not unit then
+		container:ResetAllSlots()
+		return
+	end
+
+	local auraList = C_UnitAuras.GetUnitAuras(unit, filter, container.Count, GetSortRule(), GetSortDirection())
+
+	container:ResetAllSlots()
+
+	if not auraList then
+		return
+	end
+
+	for idx, aura in ipairs(auraList) do
+		local durationObj = C_UnitAuras.GetAuraDuration(unit, aura.auraInstanceID)
+		container:SetSlot(idx, {
+			Texture = aura.icon,
+			DurationObject = durationObj,
+			HideSwipe = db.Icons.HideSwipe,
+			ReverseCooldown = db.Icons.ReverseCooldown,
+		})
+	end
+end
 
 local function GetDefaultAnchor(i)
 	local sarena = _G["sArenaEnemyFrame" .. i]
@@ -66,44 +133,22 @@ local function GetAnchor(i)
 	return GetDefaultAnchor(i)
 end
 
-local function AnchorHeader(header, anchor)
-	header:ClearAllPoints()
-
-	if db.SimpleMode.Enabled then
-		header:SetPoint("CENTER", anchor, "CENTER", db.SimpleMode.Offset.X, db.SimpleMode.Offset.Y)
+local function AnchorContainer(container, anchor)
+	local grow = db.Grow or "RIGHT"
+	local anchorPoint, relativePoint
+	if grow == "LEFT" then
+		anchorPoint = "RIGHT"
+		relativePoint = "LEFT"
+	elseif grow == "CENTER" then
+		anchorPoint = "CENTER"
+		relativePoint = "CENTER"
 	else
-		header:SetPoint(
-			db.AdvancedMode.Point,
-			anchor,
-			db.AdvancedMode.RelativePoint,
-			db.AdvancedMode.Offset.X,
-			db.AdvancedMode.Offset.Y
-		)
+		anchorPoint = "LEFT"
+		relativePoint = "RIGHT"
 	end
-
-	header:SetFrameLevel(anchor:GetFrameLevel() + 1)
-end
-
-local function EnsureHeader(anchor, unit)
-	unit = unit or anchor.unit or anchor:GetAttribute("unit")
-
-	if not unit then
-		return nil
-	end
-
-	local header = headers[anchor]
-
-	if not header then
-		header = auras:CreateHeader(unit)
-		headers[anchor] = header
-	else
-		auras:UpdateHeader(header, unit)
-	end
-
-	AnchorHeader(header, anchor)
-	header:Show()
-
-	return header
+	container.Frame:ClearAllPoints()
+	container.Frame:SetPoint(anchorPoint, anchor, relativePoint, db.Anchor.Offset.X, db.Anchor.Offset.Y)
+	container.Frame:SetFrameLevel((anchor:GetFrameLevel() or 0) + 1)
 end
 
 local function GetCurrentAnchors()
@@ -120,16 +165,74 @@ local function GetCurrentAnchors()
 	return anchors
 end
 
-local function EnsureHeaders()
-	for _, anchor in ipairs(GetCurrentAnchors()) do
-		EnsureHeader(anchor)
+local function EnsureEntry(anchor)
+	local unit = anchor.unit or anchor:GetAttribute("unit")
+
+	if not unit then
+		return nil
 	end
+
+	local entry = entries[anchor]
+
+	if not entry then
+		local container = CreateContainer()
+		entry = { Container = container, Unit = unit }
+		entries[anchor] = entry
+	else
+		entry.Unit = unit
+	end
+
+	return entry
+end
+
+local function EnsureEntries()
+	for _, anchor in ipairs(GetCurrentAnchors()) do
+		EnsureEntry(anchor)
+	end
+end
+
+local function UpdateTestContainer(container)
+	container:ResetAllSlots()
+
+	local now = GetTime()
+	local duration = 16
+	for idx, spellId in ipairs(testSpells) do
+		if idx > container.Count then
+			break
+		end
+
+		local texture = C_Spell.GetSpellTexture(spellId)
+
+		if texture then
+			container:SetSlot(idx, {
+				Texture = texture,
+				StartTime = now,
+				Duration = duration,
+				HideSwipe = db.Icons.HideSwipe,
+				ReverseCooldown = db.Icons.ReverseCooldown,
+			})
+		end
+	end
+end
+
+local function EnsureTestContainer(i)
+	local container = testContainers[i]
+
+	if not container then
+		container = CreateContainer()
+		testContainers[i] = container
+	else
+		UpdateContainerOptions(container)
+	end
+
+	UpdateTestContainer(container)
+
+	return container
 end
 
 local function CreateTestFrame(i)
 	local frame = CreateFrame("Frame", addonName .. "TestFrame" .. i, UIParent, "BackdropTemplate")
 
-	-- same as the max blizzard arena frames size
 	frame:SetSize(144, 72)
 
 	local _, class = UnitClass("player")
@@ -166,10 +269,7 @@ local function EnsureTestArenaFrames()
 		frame:ClearAllPoints()
 
 		if anchor and anchor:GetWidth() > 0 and anchor:GetHeight() > 0 then
-			-- sit directly on top of Blizzard frames
 			frame:SetAllPoints(anchor)
-
-			-- try to keep it above the real frame
 			frame:SetFrameStrata(anchor:GetFrameStrata() or "DIALOG")
 			frame:SetFrameLevel((anchor:GetFrameLevel() or 0) + 10)
 		else
@@ -179,177 +279,148 @@ local function EnsureTestArenaFrames()
 	end
 end
 
-local function UpdateTestHeader(frame)
-	local cols = #testSpells
-	local rows = 1
-	local size = tonumber(db.Icons.Size) or dbDefaults.Icons.Size
-	local padX = 0
-	local padY = 0
-	local stepX = size + padX
-	local stepY = -(size + padY)
-	local maxIcons = math.min(#testSpells, cols * rows)
-
-	frame.icons = frame.icons or {}
-
-	for i = 1, maxIcons do
-		local btn = frame.icons[i]
-
-		if not btn then
-			btn = CreateFrame("Frame", nil, frame)
-			btn.icon = btn:CreateTexture(nil, "ARTWORK")
-			btn.icon:SetAllPoints()
-
-			frame.icons[i] = btn
-		end
-
-		btn:SetSize(size, size)
-		local texture = C_Spell.GetSpellTexture(testSpells[i])
-		btn.icon:SetTexture(texture)
-
-		local col = (i - 1) % cols
-		local row = math.floor((i - 1) / cols)
-
-		btn:ClearAllPoints()
-		btn:SetPoint("TOPLEFT", frame, "TOPLEFT", col * stepX, row * stepY)
-		btn:Show()
-	end
-
-	-- Hide any extra buttons we previously created but no longer need
-	for i = maxIcons + 1, #frame.icons do
-		frame.icons[i]:Hide()
-	end
-
-	local width = (cols * size) + ((cols - 1) * padX)
-	local height = (rows * size) + ((rows - 1) * padY)
-	frame:SetSize(width, height)
-end
-
-local function EnsureTestHeader(anchor)
-	local header = testHeaders[anchor]
-
-	if not header then
-		header = CreateFrame("Frame", nil, UIParent)
-		testHeaders[anchor] = header
-	end
-
-	UpdateTestHeader(header)
-
-	return header
-end
-
 local function RealMode()
+	-- Hide all test containers
+	for _, container in pairs(testContainers) do
+		container.Frame:Hide()
+	end
+
+	for _, tf in ipairs(testArenaFrames) do
+		tf:Hide()
+	end
+
+	-- Build set of currently active anchors
 	local currentAnchors = {}
 	for _, anchor in ipairs(GetCurrentAnchors()) do
 		currentAnchors[anchor] = true
 	end
 
-	for anchor, header in pairs(headers) do
+	-- Update or hide each entry
+	for anchor, entry in pairs(entries) do
 		if not currentAnchors[anchor] then
-			header:Hide()
+			entry.Container.Frame:Hide()
 		else
-			local unit = header:GetAttribute("unit") or anchor.unit or anchor:GetAttribute("unit")
+			local unit = anchor.unit or anchor:GetAttribute("unit")
+			entry.Unit = unit
 
-			if unit then
-				-- refresh options
-				auras:UpdateHeader(header, unit)
-			end
-
-			-- refresh anchor
-			AnchorHeader(header, anchor)
-
-			-- refresh visibility
-			header:Show()
+			UpdateContainerOptions(entry.Container)
+			AnchorContainer(entry.Container, anchor)
+			UpdateContainer(entry.Container, entry.Unit)
+			entry.Container.Frame:Show()
 		end
-	end
-
-	for _, testHeader in pairs(testHeaders) do
-		testHeader:Hide()
-	end
-
-	for _, testArenaFrame in ipairs(testArenaFrames) do
-		testArenaFrame:Hide()
 	end
 end
 
 local function TestMode()
-	-- hide the real headers
-	for _, header in pairs(headers) do
-		header:Hide()
+	-- Hide real containers
+	for _, entry in pairs(entries) do
+		entry.Container.Frame:Hide()
 	end
 
-	-- try to show on real frames first
+	-- Try to anchor onto real visible frames first
+	local anchors = GetCurrentAnchors()
 	local anyRealShown = false
-	for _, anchor in ipairs(GetCurrentAnchors()) do
-		local testHeader = EnsureTestHeader(anchor)
 
+	for i, anchor in ipairs(anchors) do
 		if anchor:IsVisible() then
 			anyRealShown = true
-
-			AnchorHeader(testHeader, anchor)
-
-			testHeader:Show()
+			local container = EnsureTestContainer(i)
+			AnchorContainer(container, anchor)
+			container.Frame:Show()
 		end
 	end
 
 	if anyRealShown then
-		-- hide our test frames if any real exist
-		for i = 1, #testArenaFrames do
-			local testArenaFrame = testArenaFrames[i]
-			testArenaFrame:Hide()
+		for _, tf in ipairs(testArenaFrames) do
+			tf:Hide()
+		end
+
+		-- Hide any extra test containers not used
+		for i = #anchors + 1, maxTestFrames do
+			if testContainers[i] then
+				testContainers[i].Frame:Hide()
+			end
 		end
 
 		return
 	end
 
-	-- no real frames, show our test frames
+	-- No real frames visible — show fake arena frames
 	EnsureTestArenaFrames()
 
-	local anchor, testHeader = next(testHeaders)
-	for i = 1, #testArenaFrames do
-		if testHeader then
-			local testArenaFrame = testArenaFrames[i]
-
-			AnchorHeader(testHeader, testArenaFrame)
-
-			testHeader:Show()
-			testArenaFrame:Show()
-			anchor, testHeader = next(testHeaders, anchor)
-		end
+	for i = 1, maxTestFrames do
+		local container = EnsureTestContainer(i)
+		local testFrame = testArenaFrames[i]
+		AnchorContainer(container, testFrame)
+		container.Frame:Show()
+		testFrame:Show()
 	end
 end
 
-local function OnEvent(_, event)
+local function UpdateUnitAuraRegistration()
+	eventsFrame:UnregisterEvent("UNIT_AURA")
+	local seen = {}
+	local unitList = {}
+	for _, entry in pairs(entries) do
+		local unit = entry.Unit
+		if unit and not seen[unit] then
+			seen[unit] = true
+			unitList[#unitList + 1] = unit
+		end
+	end
+	if #unitList > 0 then
+		eventsFrame:RegisterUnitEvent("UNIT_AURA", unpack(unitList))
+	end
+end
+
+local function HasRelevantAuraChanges(auraData)
+	if auraData.isFullUpdate then
+		return true
+	end
+	if auraData.addedAuras then
+		for _, aura in ipairs(auraData.addedAuras) do
+			if aura.isHarmful and aura.isFromPlayerOrPlayerPet then
+				return true
+			end
+		end
+	end
+	return (auraData.updatedAuraInstanceIDs and #auraData.updatedAuraInstanceIDs > 0)
+		or (auraData.removedAuraInstanceIDs and #auraData.removedAuraInstanceIDs > 0)
+end
+
+local function OnEvent(_, event, unit, auraData)
 	if event == "PLAYER_REGEN_DISABLED" then
 		if testMode then
-			-- disable test mode as we enter combat
 			testMode = false
 			addon:Refresh()
 		end
-	end
-
-	if event == "PLAYER_ENTERING_WORLD" then
+	elseif event == "PLAYER_ENTERING_WORLD" or event == "ARENA_OPPONENT_UPDATE" then
 		addon:Refresh()
-	end
-
-	if event == "GROUP_ROSTER_UPDATE" then
-		addon:Refresh()
+	elseif event == "UNIT_AURA" then
+		if not testMode and HasRelevantAuraChanges(auraData) then
+			for _, entry in pairs(entries) do
+				if entry.Unit == unit then
+					UpdateContainer(entry.Container, entry.Unit)
+				end
+			end
+		end
 	end
 end
 
 local function OnAddonLoaded()
 	addon.Config:Init()
 	addon.Scheduler:Init()
-	addon.Auras:Init()
 
 	db = mini:GetSavedVars()
-
-	EnsureHeaders()
 
 	eventsFrame = CreateFrame("Frame")
 	eventsFrame:SetScript("OnEvent", OnEvent)
 	eventsFrame:RegisterEvent("ARENA_OPPONENT_UPDATE")
 	eventsFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 	eventsFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+
+	EnsureEntries()
+	UpdateUnitAuraRegistration()
 end
 
 function addon:Refresh()
@@ -360,7 +431,8 @@ function addon:Refresh()
 		return
 	end
 
-	EnsureHeaders()
+	EnsureEntries()
+	UpdateUnitAuraRegistration()
 
 	if testMode then
 		TestMode()
@@ -381,9 +453,10 @@ end
 mini:WaitForAddonLoad(OnAddonLoaded)
 
 ---@class Addon
----@field Auras AurasModule
 ---@field Framework MiniFramework
 ---@field Scheduler Scheduler
 ---@field Config Config
+---@field CustomAnchors table
+---@field IconSlotContainer IconSlotContainer
 ---@field Refresh fun(self: table)
 ---@field ToggleTest fun(self: table)
