@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.0
+
+- Major refactor with various new settings and features.
+- Masque integration.
+
 ## 1.5.3
 
 Another fix for showing on Blizzard frames when sArena is enabled.
