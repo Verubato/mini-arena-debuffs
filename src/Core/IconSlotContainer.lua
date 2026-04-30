@@ -271,6 +271,7 @@ end
 ---@field HideSwipe boolean? Suppress the cooldown swipe animation
 ---@field ReverseCooldown boolean? Reverse the swipe animation direction
 ---@field HideNumbers boolean? Hide the cooldown countdown numbers
+---@field NameplateShowPersonal boolean? When provided, passed to SetAlphaFromBoolean to hide unimportant auras
 function M:SetSlot(slotIndex, options)
 	if slotIndex < 1 or slotIndex > self.Count then
 		return
@@ -289,6 +290,11 @@ function M:SetSlot(slotIndex, options)
 		self:Layout()
 	end
 
+	if options.NameplateShowPersonal ~= nil then
+		slot.Frame:SetAlphaFromBoolean(options.NameplateShowPersonal, 1, 0)
+	else
+		slot.Frame:SetAlpha(1)
+	end
 	slot.Icon:SetTexture(options.Texture)
 	slot.Cooldown:SetReverse(options.ReverseCooldown or false)
 	slot.Cooldown:SetHideCountdownNumbers(options.HideNumbers or false)
@@ -316,6 +322,7 @@ function M:ClearSlot(slotIndex)
 	if not slot then
 		return
 	end
+	slot.Frame:SetAlpha(1)
 	slot.Icon:SetTexture(nil)
 	slot.Cooldown:Clear()
 end

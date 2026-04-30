@@ -88,6 +88,7 @@ local function UpdateContainer(container, unit)
 			HideSwipe = db.Icons.HideSwipe,
 			ReverseCooldown = db.Icons.ReverseCooldown,
 			HideNumbers = db.Icons.HideNumbers,
+			NameplateShowPersonal = db.Icons.HideUnimportant and aura.nameplateShowPersonal or nil,
 		})
 	end
 end

@@ -35,6 +35,7 @@ local dbDefaults = {
 		ReverseCooldown = false,
 		HideSwipe = false,
 		HideNumbers = false,
+		HideUnimportant = false,
 	},
 
 	MaxIcons = 6,
@@ -269,6 +270,20 @@ function M:Init()
 		end,
 	})
 	hideNumbers:SetPoint("TOPLEFT", maxIcons.Slider, "BOTTOMLEFT", columnWidth * 2 - 4, -verticalSpacing)
+
+	local hideUnimportant = mini:Checkbox({
+		Parent = panel,
+		LabelText = "Hide Unimportant",
+		Tooltip = "Hides player-cast debuffs that Blizzard considers unimportant (nameplateShowPersonal = false).",
+		GetValue = function()
+			return db.Icons.HideUnimportant
+		end,
+		SetValue = function(v)
+			db.Icons.HideUnimportant = v
+			ApplySettings()
+		end,
+	})
+	hideUnimportant:SetPoint("TOPLEFT", maxIcons.Slider, "BOTTOMLEFT", columnWidth * 3 - 4, -verticalSpacing)
 
 	-- Positioning
 
