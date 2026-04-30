@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.1.0
+
+- Added option to hide cooldown text.
+- Added option to hide unimportant debuffs.
+
 ## 2.0.0
 
 - Major refactor with various new settings and features.
