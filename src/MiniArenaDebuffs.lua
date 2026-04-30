@@ -87,6 +87,7 @@ local function UpdateContainer(container, unit)
 			DurationObject = durationObj,
 			HideSwipe = db.Icons.HideSwipe,
 			ReverseCooldown = db.Icons.ReverseCooldown,
+			HideNumbers = db.Icons.HideNumbers,
 		})
 	end
 end
@@ -210,6 +211,7 @@ local function UpdateTestContainer(container)
 				Duration = duration,
 				HideSwipe = db.Icons.HideSwipe,
 				ReverseCooldown = db.Icons.ReverseCooldown,
+				HideNumbers = db.Icons.HideNumbers,
 			})
 		end
 	end

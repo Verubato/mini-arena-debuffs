@@ -34,6 +34,7 @@ local dbDefaults = {
 		Spacing = 0,
 		ReverseCooldown = false,
 		HideSwipe = false,
+		HideNumbers = false,
 	},
 
 	MaxIcons = 6,
@@ -254,6 +255,20 @@ function M:Init()
 		end,
 	})
 	hideSwipe:SetPoint("TOPLEFT", maxIcons.Slider, "BOTTOMLEFT", columnWidth - 4, -verticalSpacing)
+
+	local hideNumbers = mini:Checkbox({
+		Parent = panel,
+		LabelText = "Hide Numbers",
+		Tooltip = "Hides the cooldown countdown numbers on icons.",
+		GetValue = function()
+			return db.Icons.HideNumbers
+		end,
+		SetValue = function(v)
+			db.Icons.HideNumbers = v
+			ApplySettings()
+		end,
+	})
+	hideNumbers:SetPoint("TOPLEFT", maxIcons.Slider, "BOTTOMLEFT", columnWidth * 2 - 4, -verticalSpacing)
 
 	-- Positioning
 

@@ -240,7 +240,6 @@ function M:SetCount(newCount)
 		cd:SetAllPoints()
 		cd:SetDrawEdge(false)
 		cd:SetDrawBling(false)
-		cd:SetHideCountdownNumbers(false)
 		cd:SetSwipeColor(0, 0, 0, 0.8)
 
 		if self.MasqueGroup then
@@ -271,6 +270,7 @@ end
 ---@field Duration number? Used with StartTime for synthetic timers (e.g. test mode)
 ---@field HideSwipe boolean? Suppress the cooldown swipe animation
 ---@field ReverseCooldown boolean? Reverse the swipe animation direction
+---@field HideNumbers boolean? Hide the cooldown countdown numbers
 function M:SetSlot(slotIndex, options)
 	if slotIndex < 1 or slotIndex > self.Count then
 		return
@@ -291,6 +291,7 @@ function M:SetSlot(slotIndex, options)
 
 	slot.Icon:SetTexture(options.Texture)
 	slot.Cooldown:SetReverse(options.ReverseCooldown or false)
+	slot.Cooldown:SetHideCountdownNumbers(options.HideNumbers or false)
 
 	local drawSwipe = not options.HideSwipe
 	if options.DurationObject then
