@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.1.1
+
+Secret value handling fix.
+
 ## 2.1.0
 
 - Added option to hide cooldown text.
