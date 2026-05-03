@@ -82,13 +82,18 @@ local function UpdateContainer(container, unit)
 
 	for idx, aura in ipairs(auraList) do
 		local durationObj = C_UnitAuras.GetAuraDuration(unit, aura.auraInstanceID)
+		-- nameplateShowPersonal is a secret boolean in tainted contexts; assign without testing it
+		local nameplateShowPersonal
+		if db.Icons.HideUnimportant then
+			nameplateShowPersonal = aura.nameplateShowPersonal
+		end
 		container:SetSlot(idx, {
 			Texture = aura.icon,
 			DurationObject = durationObj,
 			HideSwipe = db.Icons.HideSwipe,
 			ReverseCooldown = db.Icons.ReverseCooldown,
 			HideNumbers = db.Icons.HideNumbers,
-			NameplateShowPersonal = db.Icons.HideUnimportant and aura.nameplateShowPersonal or nil,
+			NameplateShowPersonal = nameplateShowPersonal,
 		})
 	end
 end
