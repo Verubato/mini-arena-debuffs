@@ -2,7 +2,6 @@
 local addonName, addon = ...
 local mini = addon.Framework
 local IconSlotContainer = addon.IconSlotContainer
-local scheduler = addon.Scheduler
 local config = addon.Config
 local eventsFrame
 ---@type { Container: IconSlotContainer, Unit: string }
@@ -133,7 +132,7 @@ end
 local function GetAnchor(i)
 	local anchor = GetOverrideAnchor(i)
 
-	if anchor and anchor:IsVisible() then
+	if anchor then
 		return anchor
 	end
 
@@ -432,13 +431,6 @@ local function OnAddonLoaded()
 end
 
 function addon:Refresh()
-	if InCombatLockdown() then
-		scheduler:RunWhenCombatEnds(function()
-			addon:Refresh()
-		end, "Refresh")
-		return
-	end
-
 	EnsureEntries()
 	UpdateUnitAuraRegistration()
 
