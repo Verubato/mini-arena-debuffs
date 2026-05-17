@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.1.2
+
+Various fixes to hopefully fix sometimes missing icons.
+
 ## 2.1.1
 
 Secret value handling fix.
