@@ -380,19 +380,26 @@ local function UpdateUnitAuraRegistration()
 	end
 end
 
-local function HasRelevantAuraChanges(auraData)
+local function HasRelevantAuraChanges(unit, auraData)
 	if auraData.isFullUpdate then
 		return true
 	end
 	if auraData.addedAuras then
 		for _, aura in ipairs(auraData.addedAuras) do
-			if aura.isHarmful and aura.isFromPlayerOrPlayerPet then
+			if not C_UnitAuras.IsAuraFilteredOutByInstanceID(unit, aura.auraInstanceID, filter) then
 				return true
 			end
 		end
 	end
-	return (auraData.updatedAuraInstanceIDs and #auraData.updatedAuraInstanceIDs > 0)
-		or (auraData.removedAuraInstanceIDs and #auraData.removedAuraInstanceIDs > 0)
+	if auraData.updatedAuraInstanceIDs then
+		for _, auraInstanceID in ipairs(auraData.updatedAuraInstanceIDs) do
+			if not C_UnitAuras.IsAuraFilteredOutByInstanceID(unit, auraInstanceID, filter) then
+				return true
+			end
+		end
+	end
+	-- Removed auras no longer exist, so the filter can't be queried; refresh on any removal.
+	return (auraData.removedAuraInstanceIDs and #auraData.removedAuraInstanceIDs > 0)
 end
 
 local function OnEvent(_, event, unit, auraData)
@@ -404,7 +411,7 @@ local function OnEvent(_, event, unit, auraData)
 	elseif event == "PLAYER_ENTERING_WORLD" or event == "ARENA_OPPONENT_UPDATE" then
 		addon:Refresh()
 	elseif event == "UNIT_AURA" then
-		if not testMode and HasRelevantAuraChanges(auraData) then
+		if not testMode and HasRelevantAuraChanges(unit, auraData) then
 			for _, entry in pairs(entries) do
 				if entry.Unit == unit then
 					UpdateContainer(entry.Container, entry.Unit)
