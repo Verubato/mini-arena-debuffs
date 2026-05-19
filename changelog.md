@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.1.3
+
+Another fix for missing icons.
+
 ## 2.1.2
 
 Various fixes to hopefully fix sometimes missing icons.
