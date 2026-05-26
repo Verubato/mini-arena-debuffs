@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.0
+
+Added font scale option.
+
 ## 2.1.3
 
 Another fix for missing icons.
