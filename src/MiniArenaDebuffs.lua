@@ -49,6 +49,7 @@ local function UpdateContainerOptions(container)
 	container:SetCount(db.MaxIcons or 6)
 	container:SetIconSize(db.Icons.Size or 36)
 	container:SetSpacing(db.Icons.Spacing or 2)
+	container:SetFontScale(db.Icons.FontScale or 1.0)
 	ApplyGrowDirection(container)
 end
 
