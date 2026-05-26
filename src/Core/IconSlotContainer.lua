@@ -29,6 +29,36 @@ local function ScheduleMasqueReSkin(group)
 	end)
 end
 
+local function GetCooldownFontString(cd)
+	if cd.FontRegion then
+		return cd.FontRegion
+	end
+	for i = 1, cd:GetNumRegions() do
+		local region = select(i, cd:GetRegions())
+		if region and region.GetObjectType and region:GetObjectType() == "FontString" then
+			cd.FontRegion = region
+			return region
+		end
+	end
+	return nil
+end
+
+local function UpdateCooldownFontSize(cd, iconSize, fontScale)
+	if not cd or not iconSize then
+		return
+	end
+	local region = GetCooldownFontString(cd)
+	if not region then
+		return
+	end
+	local font, _, flags = region:GetFont()
+	if not font then
+		return
+	end
+	local fontSize = math.max(1, math.floor(iconSize * 0.4 * (fontScale or 1.0)))
+	region:SetFont(font, fontSize, flags)
+end
+
 ---Creates a new IconSlotContainer instance.
 ---@param parent table frame to attach to
 ---@param count number of icon slots (default: 3)
@@ -50,6 +80,7 @@ function M:New(parent, count, size, spacing, groupName)
 	instance.Count = 0
 	instance.Size = size
 	instance.Spacing = spacing
+	instance.FontScale = 1.0
 	instance.GrowDown = false
 	instance.InvertLayout = false
 	instance.MasqueGroup = Masque and groupName and Masque:Group(addonName, groupName) or nil
@@ -199,12 +230,34 @@ function M:SetIconSize(newSize)
 		local slot = self.Slots[i]
 		if slot and slot.Frame then
 			slot.Frame:SetSize(self.Size, self.Size)
+			if slot.Cooldown then
+				UpdateCooldownFontSize(slot.Cooldown, self.Size, self.FontScale)
+			end
 		end
 	end
 
 	ScheduleMasqueReSkin(self.MasqueGroup)
 	self.LayoutSignature = nil
 	self:Layout()
+end
+
+---Sets the font scale for cooldown countdown text.
+---@param newScale number multiplier (1.0 = default)
+function M:SetFontScale(newScale)
+	newScale = tonumber(newScale)
+	if not newScale or newScale <= 0 then
+		return
+	end
+	if self.FontScale == newScale then
+		return
+	end
+	self.FontScale = newScale
+	for i = 1, self.Count do
+		local slot = self.Slots[i]
+		if slot and slot.Cooldown then
+			UpdateCooldownFontSize(slot.Cooldown, self.Size, self.FontScale)
+		end
+	end
 end
 
 ---Sets the total number of icon slots.
@@ -241,6 +294,7 @@ function M:SetCount(newCount)
 		cd:SetDrawEdge(false)
 		cd:SetDrawBling(false)
 		cd:SetSwipeColor(0, 0, 0, 0.8)
+		UpdateCooldownFontSize(cd, self.Size, self.FontScale)
 
 		if self.MasqueGroup then
 			self.MasqueGroup:AddButton(slotFrame, {
@@ -367,6 +421,7 @@ end
 ---@field Count number
 ---@field Size number
 ---@field Spacing number
+---@field FontScale number
 ---@field GrowDown boolean
 ---@field InvertLayout boolean
 ---@field SetCount fun(self: IconSlotContainer, count: number)
@@ -374,6 +429,7 @@ end
 ---@field SetGrowDown fun(self: IconSlotContainer, enabled: boolean)
 ---@field SetInvertLayout fun(self: IconSlotContainer, inverted: boolean)
 ---@field SetIconSize fun(self: IconSlotContainer, size: number)
+---@field SetFontScale fun(self: IconSlotContainer, scale: number)
 ---@field SetSlot fun(self: IconSlotContainer, slotIndex: number, options: IconSlotOptions)
 ---@field ClearSlot fun(self: IconSlotContainer, slotIndex: number)
 ---@field SetSlotUnused fun(self: IconSlotContainer, slotIndex: number)

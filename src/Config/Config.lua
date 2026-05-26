@@ -32,6 +32,7 @@ local dbDefaults = {
 	Icons = {
 		Size = 36,
 		Spacing = 0,
+		FontScale = 1.0,
 		ReverseCooldown = false,
 		HideSwipe = false,
 		HideNumbers = false,
@@ -228,6 +229,23 @@ function M:Init()
 		end,
 	})
 	maxIcons.Slider:SetPoint("TOPLEFT", iconSize.Slider, "BOTTOMLEFT", 0, -verticalSpacing * 3)
+
+	local fontScale = mini:Slider({
+		Parent = panel,
+		Min = 0.5,
+		Max = 1.5,
+		Step = 0.05,
+		Width = columnWidth * 2 - horizontalSpacing,
+		LabelText = "Font Scale",
+		GetValue = function()
+			return db.Icons.FontScale or 1.0
+		end,
+		SetValue = function(v)
+			db.Icons.FontScale = mini:ClampFloat(v, 0.5, 1.5, dbDefaults.Icons.FontScale)
+			ApplySettings()
+		end,
+	})
+	fontScale.Slider:SetPoint("LEFT", maxIcons.Slider, "RIGHT", horizontalSpacing * 2, 0)
 
 	local reverseSwipe = mini:Checkbox({
 		Parent = panel,
