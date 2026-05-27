@@ -111,34 +111,47 @@ local function StopGlow(slot)
 	slot.IsGlowing = false
 end
 
-local function UpdatePandemicForSlot(slot, pandemicEnabled)
-	if not pandemicEnabled or not slot.IsUsed then
+local function SetDesaturated(slot, desaturated)
+	if slot.IsDesaturated == desaturated then
+		return
+	end
+	slot.Icon:SetDesaturated(desaturated and true or nil)
+	slot.IsDesaturated = desaturated
+end
+
+local function UpdatePandemicForSlot(slot, glowEnabled, desaturateEnabled)
+	if not slot.IsUsed or slot.IsCC or (not glowEnabled and not desaturateEnabled) then
 		StopGlow(slot)
+		SetDesaturated(slot, false)
 		return
 	end
 	local alpha = GetPandemicAlpha(slot)
-	if alpha and alpha > 0 then
+	local inPandemic = alpha and alpha > 0
+	if glowEnabled and inPandemic then
 		StartGlow(slot)
 	else
 		StopGlow(slot)
 	end
+	SetDesaturated(slot, desaturateEnabled and inPandemic or false)
 end
 
 local function TickPandemic()
 	for i = 1, #instances do
 		local inst = instances[i]
-		local enabled = inst.PandemicGlow and inst.Frame:IsShown()
+		local visible = inst.Frame:IsShown()
+		local glow = inst.PandemicGlow and visible
+		local desat = inst.PandemicDesaturate and visible
 		for j = 1, inst.Count do
 			local slot = inst.Slots[j]
 			if slot then
-				UpdatePandemicForSlot(slot, enabled)
+				UpdatePandemicForSlot(slot, glow, desat)
 			end
 		end
 	end
 end
 
 local function EnsurePandemicTicker()
-	if pandemicTicker or not LCG then
+	if pandemicTicker then
 		return
 	end
 	pandemicTicker = C_Timer.NewTicker(0.1, TickPandemic)
@@ -169,6 +182,7 @@ function M:New(parent, count, size, spacing, groupName)
 	instance.GrowDown = false
 	instance.InvertLayout = false
 	instance.PandemicGlow = false
+	instance.PandemicDesaturate = false
 	instance.MasqueGroup = Masque and groupName and Masque:Group(addonName, groupName) or nil
 
 	instance:SetCount(count)
@@ -192,6 +206,24 @@ function M:SetPandemicGlow(enabled)
 			local slot = self.Slots[i]
 			if slot then
 				StopGlow(slot)
+			end
+		end
+	end
+end
+
+---Enables or disables desaturating icons during the pandemic window.
+---@param enabled boolean
+function M:SetPandemicDesaturate(enabled)
+	enabled = enabled and true or false
+	if self.PandemicDesaturate == enabled then
+		return
+	end
+	self.PandemicDesaturate = enabled
+	if not enabled then
+		for i = 1, self.Count do
+			local slot = self.Slots[i]
+			if slot then
+				SetDesaturated(slot, false)
 			end
 		end
 	end
@@ -433,6 +465,7 @@ end
 ---@field ReverseCooldown boolean? Reverse the swipe animation direction
 ---@field HideNumbers boolean? Hide the cooldown countdown numbers
 ---@field NameplateShowPersonal boolean? When provided, passed to SetAlphaFromBoolean to hide unimportant auras
+---@field IsCC boolean? Marks the aura as crowd-control so pandemic-window visuals are skipped
 function M:SetSlot(slotIndex, options)
 	if slotIndex < 1 or slotIndex > self.Count then
 		return
@@ -456,6 +489,7 @@ function M:SetSlot(slotIndex, options)
 	else
 		slot.Frame:SetAlpha(1)
 	end
+	slot.IsCC = options.IsCC and true or false
 	slot.Icon:SetTexture(options.Texture)
 	slot.Cooldown:SetReverse(options.ReverseCooldown or false)
 	slot.Cooldown:SetHideCountdownNumbers(options.HideNumbers or false)
@@ -498,7 +532,9 @@ function M:ClearSlot(slotIndex)
 	slot.DurationObject = nil
 	slot.StartTime = nil
 	slot.Duration = nil
+	slot.IsCC = false
 	StopGlow(slot)
+	SetDesaturated(slot, false)
 end
 
 ---Marks a slot as unused and triggers a layout update.
@@ -545,6 +581,7 @@ end
 ---@field GrowDown boolean
 ---@field InvertLayout boolean
 ---@field PandemicGlow boolean
+---@field PandemicDesaturate boolean
 ---@field SetCount fun(self: IconSlotContainer, count: number)
 ---@field SetSpacing fun(self: IconSlotContainer, spacing: number)
 ---@field SetGrowDown fun(self: IconSlotContainer, enabled: boolean)
@@ -552,6 +589,7 @@ end
 ---@field SetIconSize fun(self: IconSlotContainer, size: number)
 ---@field SetFontScale fun(self: IconSlotContainer, scale: number)
 ---@field SetPandemicGlow fun(self: IconSlotContainer, enabled: boolean)
+---@field SetPandemicDesaturate fun(self: IconSlotContainer, enabled: boolean)
 ---@field SetSlot fun(self: IconSlotContainer, slotIndex: number, options: IconSlotOptions)
 ---@field ClearSlot fun(self: IconSlotContainer, slotIndex: number)
 ---@field SetSlotUnused fun(self: IconSlotContainer, slotIndex: number)

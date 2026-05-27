@@ -38,6 +38,7 @@ local dbDefaults = {
 		HideNumbers = false,
 		HideUnimportant = false,
 		PandemicGlow = false,
+		PandemicDesaturate = false,
 	},
 
 	MaxIcons = 6,
@@ -242,6 +243,20 @@ function M:Init()
 		end,
 	})
 	pandemicGlow:SetPoint("TOPLEFT", reverseSwipe, "BOTTOMLEFT", 0, -verticalSpacing)
+
+	local pandemicDesaturate = mini:Checkbox({
+		Parent = panel,
+		LabelText = "Desaturate on Pandemic",
+		Tooltip = "Desaturates icons during the pandemic window (last 30% of the debuff's duration).",
+		GetValue = function()
+			return db.Icons.PandemicDesaturate
+		end,
+		SetValue = function(v)
+			db.Icons.PandemicDesaturate = v
+			ApplySettings()
+		end,
+	})
+	pandemicDesaturate:SetPoint("TOPLEFT", hideSwipe, "BOTTOMLEFT", 0, -verticalSpacing)
 
 	local iconSize = mini:Slider({
 		Parent = panel,
