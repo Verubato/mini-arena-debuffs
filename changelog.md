@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3.0
+
+- Added glow and desaturate for the pandemic window.
+
 ## 2.2.0
 
 Added font scale option.
