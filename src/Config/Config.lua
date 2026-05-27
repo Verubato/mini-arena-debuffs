@@ -173,12 +173,75 @@ function M:Init()
 
 	lines:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
 
-	-- Icons
+	local reverseSwipe = mini:Checkbox({
+		Parent = panel,
+		LabelText = "Reverse Swipe",
+		Tooltip = "Reverses the cooldown swipe animation direction.",
+		GetValue = function()
+			return db.Icons.ReverseCooldown
+		end,
+		SetValue = function(v)
+			db.Icons.ReverseCooldown = v
+			ApplySettings()
+		end,
+	})
+	reverseSwipe:SetPoint("TOPLEFT", lines, "BOTTOMLEFT", -4, -verticalSpacing)
 
-	local iconsDivider = mini:Divider({ Parent = panel, Text = "Icons" })
-	iconsDivider:SetPoint("LEFT", panel, "LEFT")
-	iconsDivider:SetPoint("RIGHT", panel, "RIGHT", -horizontalSpacing, 0)
-	iconsDivider:SetPoint("TOP", lines, "BOTTOM", 0, -verticalSpacing)
+	local hideSwipe = mini:Checkbox({
+		Parent = panel,
+		LabelText = "Hide Swipe",
+		Tooltip = "Hides the cooldown swipe animation on icons.",
+		GetValue = function()
+			return db.Icons.HideSwipe
+		end,
+		SetValue = function(v)
+			db.Icons.HideSwipe = v
+			ApplySettings()
+		end,
+	})
+	hideSwipe:SetPoint("TOPLEFT", lines, "BOTTOMLEFT", columnWidth - 4, -verticalSpacing)
+
+	local hideNumbers = mini:Checkbox({
+		Parent = panel,
+		LabelText = "Hide Numbers",
+		Tooltip = "Hides the cooldown countdown numbers on icons.",
+		GetValue = function()
+			return db.Icons.HideNumbers
+		end,
+		SetValue = function(v)
+			db.Icons.HideNumbers = v
+			ApplySettings()
+		end,
+	})
+	hideNumbers:SetPoint("TOPLEFT", lines, "BOTTOMLEFT", columnWidth * 2 - 4, -verticalSpacing)
+
+	local hideUnimportant = mini:Checkbox({
+		Parent = panel,
+		LabelText = "Hide Unimportant",
+		Tooltip = "Hides player-cast debuffs that Blizzard considers unimportant (nameplateShowPersonal = false).",
+		GetValue = function()
+			return db.Icons.HideUnimportant
+		end,
+		SetValue = function(v)
+			db.Icons.HideUnimportant = v
+			ApplySettings()
+		end,
+	})
+	hideUnimportant:SetPoint("TOPLEFT", lines, "BOTTOMLEFT", columnWidth * 3 - 4, -verticalSpacing)
+
+	local pandemicGlow = mini:Checkbox({
+		Parent = panel,
+		LabelText = "Glow on Pandemic",
+		Tooltip = "Glows icons during the pandemic window (last 30% of the debuff's duration).",
+		GetValue = function()
+			return db.Icons.PandemicGlow
+		end,
+		SetValue = function(v)
+			db.Icons.PandemicGlow = v
+			ApplySettings()
+		end,
+	})
+	pandemicGlow:SetPoint("TOPLEFT", reverseSwipe, "BOTTOMLEFT", 0, -verticalSpacing)
 
 	local iconSize = mini:Slider({
 		Parent = panel,
@@ -195,7 +258,7 @@ function M:Init()
 			ApplySettings()
 		end,
 	})
-	iconSize.Slider:SetPoint("TOPLEFT", iconsDivider, "BOTTOMLEFT", 0, -verticalSpacing * 3)
+	iconSize.Slider:SetPoint("TOPLEFT", pandemicGlow, "BOTTOMLEFT", 4, -verticalSpacing * 2)
 
 	local iconSpacing = mini:Slider({
 		Parent = panel,
@@ -248,82 +311,12 @@ function M:Init()
 	})
 	fontScale.Slider:SetPoint("LEFT", maxIcons.Slider, "RIGHT", horizontalSpacing * 2, 0)
 
-	local reverseSwipe = mini:Checkbox({
-		Parent = panel,
-		LabelText = "Reverse Swipe",
-		Tooltip = "Reverses the cooldown swipe animation direction.",
-		GetValue = function()
-			return db.Icons.ReverseCooldown
-		end,
-		SetValue = function(v)
-			db.Icons.ReverseCooldown = v
-			ApplySettings()
-		end,
-	})
-	reverseSwipe:SetPoint("TOPLEFT", maxIcons.Slider, "BOTTOMLEFT", -4, -verticalSpacing)
+	-- Position
 
-	local hideSwipe = mini:Checkbox({
-		Parent = panel,
-		LabelText = "Hide Swipe",
-		Tooltip = "Hides the cooldown swipe animation on icons.",
-		GetValue = function()
-			return db.Icons.HideSwipe
-		end,
-		SetValue = function(v)
-			db.Icons.HideSwipe = v
-			ApplySettings()
-		end,
-	})
-	hideSwipe:SetPoint("TOPLEFT", maxIcons.Slider, "BOTTOMLEFT", columnWidth - 4, -verticalSpacing)
-
-	local hideNumbers = mini:Checkbox({
-		Parent = panel,
-		LabelText = "Hide Numbers",
-		Tooltip = "Hides the cooldown countdown numbers on icons.",
-		GetValue = function()
-			return db.Icons.HideNumbers
-		end,
-		SetValue = function(v)
-			db.Icons.HideNumbers = v
-			ApplySettings()
-		end,
-	})
-	hideNumbers:SetPoint("TOPLEFT", maxIcons.Slider, "BOTTOMLEFT", columnWidth * 2 - 4, -verticalSpacing)
-
-	local hideUnimportant = mini:Checkbox({
-		Parent = panel,
-		LabelText = "Hide Unimportant",
-		Tooltip = "Hides player-cast debuffs that Blizzard considers unimportant (nameplateShowPersonal = false).",
-		GetValue = function()
-			return db.Icons.HideUnimportant
-		end,
-		SetValue = function(v)
-			db.Icons.HideUnimportant = v
-			ApplySettings()
-		end,
-	})
-	hideUnimportant:SetPoint("TOPLEFT", maxIcons.Slider, "BOTTOMLEFT", columnWidth * 3 - 4, -verticalSpacing)
-
-	local pandemicGlow = mini:Checkbox({
-		Parent = panel,
-		LabelText = "Glow on Pandemic",
-		Tooltip = "Glows icons during the pandemic window (last 30% of the debuff's duration).",
-		GetValue = function()
-			return db.Icons.PandemicGlow
-		end,
-		SetValue = function(v)
-			db.Icons.PandemicGlow = v
-			ApplySettings()
-		end,
-	})
-	pandemicGlow:SetPoint("TOPLEFT", reverseSwipe, "BOTTOMLEFT", 0, -verticalSpacing)
-
-	-- Positioning
-
-	local posDivider = mini:Divider({ Parent = panel, Text = "Positioning" })
+	local posDivider = mini:Divider({ Parent = panel, Text = "Position" })
 	posDivider:SetPoint("LEFT", panel, "LEFT")
 	posDivider:SetPoint("RIGHT", panel, "RIGHT", -horizontalSpacing, 0)
-	posDivider:SetPoint("TOP", pandemicGlow, "BOTTOM", 0, -verticalSpacing * 0.5)
+	posDivider:SetPoint("TOP", maxIcons.Slider, "BOTTOM", 0, -verticalSpacing * 1.5)
 
 	local growLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
 	growLbl:SetText("Grow")
