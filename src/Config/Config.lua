@@ -37,6 +37,7 @@ local dbDefaults = {
 		HideSwipe = false,
 		HideNumbers = false,
 		HideUnimportant = false,
+		PandemicGlow = false,
 	},
 
 	MaxIcons = 6,
@@ -303,12 +304,26 @@ function M:Init()
 	})
 	hideUnimportant:SetPoint("TOPLEFT", maxIcons.Slider, "BOTTOMLEFT", columnWidth * 3 - 4, -verticalSpacing)
 
+	local pandemicGlow = mini:Checkbox({
+		Parent = panel,
+		LabelText = "Glow on Pandemic",
+		Tooltip = "Glows icons during the pandemic window (last 30% of the debuff's duration).",
+		GetValue = function()
+			return db.Icons.PandemicGlow
+		end,
+		SetValue = function(v)
+			db.Icons.PandemicGlow = v
+			ApplySettings()
+		end,
+	})
+	pandemicGlow:SetPoint("TOPLEFT", reverseSwipe, "BOTTOMLEFT", 0, -verticalSpacing)
+
 	-- Positioning
 
 	local posDivider = mini:Divider({ Parent = panel, Text = "Positioning" })
 	posDivider:SetPoint("LEFT", panel, "LEFT")
 	posDivider:SetPoint("RIGHT", panel, "RIGHT", -horizontalSpacing, 0)
-	posDivider:SetPoint("TOP", reverseSwipe, "BOTTOM", 0, -verticalSpacing)
+	posDivider:SetPoint("TOP", pandemicGlow, "BOTTOM", 0, -verticalSpacing * 0.5)
 
 	local growLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
 	growLbl:SetText("Grow")
@@ -370,7 +385,7 @@ function M:Init()
 	local sortDivider = mini:Divider({ Parent = panel, Text = "Sort" })
 	sortDivider:SetPoint("LEFT", panel, "LEFT")
 	sortDivider:SetPoint("RIGHT", panel, "RIGHT", -horizontalSpacing, 0)
-	sortDivider:SetPoint("TOP", offsetX.Slider, "BOTTOM", 0, -verticalSpacing * 2)
+	sortDivider:SetPoint("TOP", offsetX.Slider, "BOTTOM", 0, -verticalSpacing)
 
 	local sortMethodLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
 	sortMethodLbl:SetText("Sort Method")

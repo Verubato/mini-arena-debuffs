@@ -1,8 +1,23 @@
 ---@type string, Addon
 local addonName, addon = ...
 local Masque = LibStub and LibStub("Masque", true)
+local LCG = LibStub and LibStub("LibCustomGlow-1.0", true)
 -- Debounce table keyed by group object: one deferred ReSkin per group per frame
 local masqueReskinPending = {}
+
+-- Pandemic step curve: alpha 1 at <=30% remaining, alpha 0 above. Built once if the API exists.
+local pandemicPercentage = 0.3
+local pandemicCurve
+if C_CurveUtil and Enum and Enum.LuaCurveType then
+	pandemicCurve = C_CurveUtil.CreateCurve()
+	pandemicCurve:SetType(Enum.LuaCurveType.Step)
+	pandemicCurve:AddPoint(0, 1)
+	pandemicCurve:AddPoint(pandemicPercentage, 0)
+end
+
+-- All live IconSlotContainer instances; iterated by the shared pandemic ticker.
+local instances = {}
+local pandemicTicker
 
 -- Reused across Layout() calls to avoid table allocation on the hot path
 local layoutScratch = {}
@@ -59,6 +74,76 @@ local function UpdateCooldownFontSize(cd, iconSize, fontScale)
 	region:SetFont(font, fontSize, flags)
 end
 
+---Returns the pandemic alpha (0 or 1) for a slot, or nil if no usable duration data.
+local function GetPandemicAlpha(slot)
+	if slot.DurationObject and pandemicCurve and C_CurveUtil and C_CurveUtil.EvaluateColorValueFromBoolean then
+		return C_CurveUtil.EvaluateColorValueFromBoolean(
+			slot.DurationObject:IsZero(),
+			0,
+			slot.DurationObject:EvaluateRemainingPercent(pandemicCurve)
+		)
+	end
+	if slot.StartTime and slot.Duration and slot.Duration > 0 then
+		local remaining = (slot.StartTime + slot.Duration) - GetTime()
+		if remaining <= slot.Duration * pandemicPercentage and remaining > 0 then
+			return 1
+		end
+		return 0
+	end
+	return nil
+end
+
+local procGlowOptions = { key = "pandemic", startAnim = false }
+
+local function StartGlow(slot)
+	if not LCG or slot.IsGlowing then
+		return
+	end
+	LCG.ProcGlow_Start(slot.Frame, procGlowOptions)
+	slot.IsGlowing = true
+end
+
+local function StopGlow(slot)
+	if not LCG or not slot.IsGlowing then
+		return
+	end
+	LCG.ProcGlow_Stop(slot.Frame, "pandemic")
+	slot.IsGlowing = false
+end
+
+local function UpdatePandemicForSlot(slot, pandemicEnabled)
+	if not pandemicEnabled or not slot.IsUsed then
+		StopGlow(slot)
+		return
+	end
+	local alpha = GetPandemicAlpha(slot)
+	if alpha and alpha > 0 then
+		StartGlow(slot)
+	else
+		StopGlow(slot)
+	end
+end
+
+local function TickPandemic()
+	for i = 1, #instances do
+		local inst = instances[i]
+		local enabled = inst.PandemicGlow and inst.Frame:IsShown()
+		for j = 1, inst.Count do
+			local slot = inst.Slots[j]
+			if slot then
+				UpdatePandemicForSlot(slot, enabled)
+			end
+		end
+	end
+end
+
+local function EnsurePandemicTicker()
+	if pandemicTicker or not LCG then
+		return
+	end
+	pandemicTicker = C_Timer.NewTicker(0.1, TickPandemic)
+end
+
 ---Creates a new IconSlotContainer instance.
 ---@param parent table frame to attach to
 ---@param count number of icon slots (default: 3)
@@ -83,11 +168,33 @@ function M:New(parent, count, size, spacing, groupName)
 	instance.FontScale = 1.0
 	instance.GrowDown = false
 	instance.InvertLayout = false
+	instance.PandemicGlow = false
 	instance.MasqueGroup = Masque and groupName and Masque:Group(addonName, groupName) or nil
 
 	instance:SetCount(count)
 
+	instances[#instances + 1] = instance
+	EnsurePandemicTicker()
+
 	return instance
+end
+
+---Enables or disables the pandemic-window glow for this container's slots.
+---@param enabled boolean
+function M:SetPandemicGlow(enabled)
+	enabled = enabled and true or false
+	if self.PandemicGlow == enabled then
+		return
+	end
+	self.PandemicGlow = enabled
+	if not enabled then
+		for i = 1, self.Count do
+			local slot = self.Slots[i]
+			if slot then
+				StopGlow(slot)
+			end
+		end
+	end
 end
 
 function M:Layout()
@@ -357,12 +464,21 @@ function M:SetSlot(slotIndex, options)
 	if options.DurationObject then
 		slot.Cooldown:SetCooldownFromDurationObject(options.DurationObject)
 		slot.Cooldown:SetDrawSwipe(drawSwipe)
+		slot.DurationObject = options.DurationObject
+		slot.StartTime = nil
+		slot.Duration = nil
 	elseif options.StartTime and options.Duration then
 		slot.Cooldown:SetCooldown(options.StartTime, options.Duration)
 		slot.Cooldown:SetDrawSwipe(drawSwipe)
+		slot.DurationObject = nil
+		slot.StartTime = options.StartTime
+		slot.Duration = options.Duration
 	else
 		slot.Cooldown:Clear()
 		slot.Cooldown:SetDrawSwipe(false)
+		slot.DurationObject = nil
+		slot.StartTime = nil
+		slot.Duration = nil
 	end
 end
 
@@ -379,6 +495,10 @@ function M:ClearSlot(slotIndex)
 	slot.Frame:SetAlpha(1)
 	slot.Icon:SetTexture(nil)
 	slot.Cooldown:Clear()
+	slot.DurationObject = nil
+	slot.StartTime = nil
+	slot.Duration = nil
+	StopGlow(slot)
 end
 
 ---Marks a slot as unused and triggers a layout update.
@@ -424,12 +544,14 @@ end
 ---@field FontScale number
 ---@field GrowDown boolean
 ---@field InvertLayout boolean
+---@field PandemicGlow boolean
 ---@field SetCount fun(self: IconSlotContainer, count: number)
 ---@field SetSpacing fun(self: IconSlotContainer, spacing: number)
 ---@field SetGrowDown fun(self: IconSlotContainer, enabled: boolean)
 ---@field SetInvertLayout fun(self: IconSlotContainer, inverted: boolean)
 ---@field SetIconSize fun(self: IconSlotContainer, size: number)
 ---@field SetFontScale fun(self: IconSlotContainer, scale: number)
+---@field SetPandemicGlow fun(self: IconSlotContainer, enabled: boolean)
 ---@field SetSlot fun(self: IconSlotContainer, slotIndex: number, options: IconSlotOptions)
 ---@field ClearSlot fun(self: IconSlotContainer, slotIndex: number)
 ---@field SetSlotUnused fun(self: IconSlotContainer, slotIndex: number)

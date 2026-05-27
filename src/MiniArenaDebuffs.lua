@@ -50,6 +50,7 @@ local function UpdateContainerOptions(container)
 	container:SetIconSize(db.Icons.Size or 36)
 	container:SetSpacing(db.Icons.Spacing or 2)
 	container:SetFontScale(db.Icons.FontScale or 1.0)
+	container:SetPandemicGlow(db.Icons.PandemicGlow or false)
 	ApplyGrowDirection(container)
 end
 
@@ -62,6 +63,7 @@ local function CreateContainer()
 		"MiniArenaDebuffs"
 	)
 	container.Frame:Hide()
+	container:SetPandemicGlow(db.Icons.PandemicGlow or false)
 	ApplyGrowDirection(container)
 	return container
 end
