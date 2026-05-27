@@ -51,6 +51,7 @@ local function UpdateContainerOptions(container)
 	container:SetSpacing(db.Icons.Spacing or 2)
 	container:SetFontScale(db.Icons.FontScale or 1.0)
 	container:SetPandemicGlow(db.Icons.PandemicGlow or false)
+	container:SetPandemicDesaturate(db.Icons.PandemicDesaturate or false)
 	ApplyGrowDirection(container)
 end
 
@@ -64,6 +65,7 @@ local function CreateContainer()
 	)
 	container.Frame:Hide()
 	container:SetPandemicGlow(db.Icons.PandemicGlow or false)
+	container:SetPandemicDesaturate(db.Icons.PandemicDesaturate or false)
 	ApplyGrowDirection(container)
 	return container
 end
@@ -89,6 +91,11 @@ local function UpdateContainer(container, unit)
 		if db.Icons.HideUnimportant then
 			nameplateShowPersonal = aura.nameplateShowPersonal
 		end
+		-- IsAuraFilteredOutByInstanceID returns false when the aura matches all filter terms.
+		-- We already know it's HARMFUL, so a false result here means it's CC.
+		local isCC = not C_UnitAuras.IsAuraFilteredOutByInstanceID(
+			unit, aura.auraInstanceID, "HARMFUL|CROWD_CONTROL"
+		)
 		container:SetSlot(idx, {
 			Texture = aura.icon,
 			DurationObject = durationObj,
@@ -96,6 +103,7 @@ local function UpdateContainer(container, unit)
 			ReverseCooldown = db.Icons.ReverseCooldown,
 			HideNumbers = db.Icons.HideNumbers,
 			NameplateShowPersonal = nameplateShowPersonal,
+			IsCC = isCC,
 		})
 	end
 end
