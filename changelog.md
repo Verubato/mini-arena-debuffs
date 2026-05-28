@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3.1
+
+Secret value handling error fix.
+
 ## 2.3.0
 
 - Added glow and desaturate for the pandemic window.
