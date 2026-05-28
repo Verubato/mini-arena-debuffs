@@ -74,7 +74,30 @@ local function UpdateCooldownFontSize(cd, iconSize, fontScale)
 	region:SetFont(font, fontSize, flags)
 end
 
----Returns the pandemic alpha (0 or 1) for a slot, or nil if no usable duration data.
+local procGlowOptions = { key = "pandemic", startAnim = false }
+
+-- Glow is hosted on slot.PandemicOverlay so its visibility can be gated by SetAlpha
+-- without dimming the icon. The animation loops continuously while started; the
+-- secret-number curve alpha (which we cannot compare) drives the overlay's alpha.
+local function StartGlow(slot)
+	if not LCG or slot.IsGlowing or not slot.PandemicOverlay then
+		return
+	end
+	LCG.ProcGlow_Start(slot.PandemicOverlay, procGlowOptions)
+	slot.IsGlowing = true
+end
+
+local function StopGlow(slot)
+	if not LCG or not slot.IsGlowing or not slot.PandemicOverlay then
+		return
+	end
+	LCG.ProcGlow_Stop(slot.PandemicOverlay, "pandemic")
+	slot.IsGlowing = false
+end
+
+-- Returns the pandemic alpha for a slot. Pattern from Platynator: the value may be
+-- a secret number when DurationObject is in play, so it must only flow into setters
+-- (SetAlpha, SetDesaturation) — never into comparisons.
 local function GetPandemicAlpha(slot)
 	if slot.DurationObject and pandemicCurve and C_CurveUtil and C_CurveUtil.EvaluateColorValueFromBoolean then
 		return C_CurveUtil.EvaluateColorValueFromBoolean(
@@ -85,54 +108,42 @@ local function GetPandemicAlpha(slot)
 	end
 	if slot.StartTime and slot.Duration and slot.Duration > 0 then
 		local remaining = (slot.StartTime + slot.Duration) - GetTime()
-		if remaining <= slot.Duration * pandemicPercentage and remaining > 0 then
+		if remaining > 0 and remaining <= slot.Duration * pandemicPercentage then
 			return 1
 		end
-		return 0
 	end
-	return nil
-end
-
-local procGlowOptions = { key = "pandemic", startAnim = false }
-
-local function StartGlow(slot)
-	if not LCG or slot.IsGlowing then
-		return
-	end
-	LCG.ProcGlow_Start(slot.Frame, procGlowOptions)
-	slot.IsGlowing = true
-end
-
-local function StopGlow(slot)
-	if not LCG or not slot.IsGlowing then
-		return
-	end
-	LCG.ProcGlow_Stop(slot.Frame, "pandemic")
-	slot.IsGlowing = false
-end
-
-local function SetDesaturated(slot, desaturated)
-	if slot.IsDesaturated == desaturated then
-		return
-	end
-	slot.Icon:SetDesaturated(desaturated and true or nil)
-	slot.IsDesaturated = desaturated
+	return 0
 end
 
 local function UpdatePandemicForSlot(slot, glowEnabled, desaturateEnabled)
+	local overlay = slot.PandemicOverlay
 	if not slot.IsUsed or slot.IsCC or (not glowEnabled and not desaturateEnabled) then
 		StopGlow(slot)
-		SetDesaturated(slot, false)
+		if overlay then
+			overlay:SetAlpha(0)
+		end
+		slot.Icon:SetDesaturation(0)
 		return
 	end
-	local alpha = GetPandemicAlpha(slot)
-	local inPandemic = alpha and alpha > 0
-	if glowEnabled and inPandemic then
+	-- Toggle the glow animation strictly off the user setting; never test the secret value.
+	if glowEnabled then
 		StartGlow(slot)
 	else
 		StopGlow(slot)
 	end
-	SetDesaturated(slot, desaturateEnabled and inPandemic or false)
+	local alpha = GetPandemicAlpha(slot)
+	if overlay then
+		if glowEnabled then
+			overlay:SetAlpha(alpha)
+		else
+			overlay:SetAlpha(0)
+		end
+	end
+	if desaturateEnabled then
+		slot.Icon:SetDesaturation(alpha)
+	else
+		slot.Icon:SetDesaturation(0)
+	end
 end
 
 local function TickPandemic()
@@ -206,6 +217,9 @@ function M:SetPandemicGlow(enabled)
 			local slot = self.Slots[i]
 			if slot then
 				StopGlow(slot)
+				if slot.PandemicOverlay then
+					slot.PandemicOverlay:SetAlpha(0)
+				end
 			end
 		end
 	end
@@ -223,7 +237,7 @@ function M:SetPandemicDesaturate(enabled)
 		for i = 1, self.Count do
 			local slot = self.Slots[i]
 			if slot then
-				SetDesaturated(slot, false)
+				slot.Icon:SetDesaturation(0)
 			end
 		end
 	end
@@ -435,6 +449,13 @@ function M:SetCount(newCount)
 		cd:SetSwipeColor(0, 0, 0, 0.8)
 		UpdateCooldownFontSize(cd, self.Size, self.FontScale)
 
+		-- Glow lives on this overlay so we can SetAlpha it with the pandemic curve's
+		-- secret-number result without dimming the icon underneath.
+		local pandemicOverlay = CreateFrame("Frame", NextFrameName("Pandemic"), slotFrame)
+		pandemicOverlay:SetAllPoints()
+		pandemicOverlay:SetFrameLevel(cd:GetFrameLevel() + 5)
+		pandemicOverlay:SetAlpha(0)
+
 		if self.MasqueGroup then
 			self.MasqueGroup:AddButton(slotFrame, {
 				Icon = icon,
@@ -446,6 +467,7 @@ function M:SetCount(newCount)
 			Frame = slotFrame,
 			Icon = icon,
 			Cooldown = cd,
+			PandemicOverlay = pandemicOverlay,
 			IsUsed = false,
 		}
 	end
@@ -534,7 +556,10 @@ function M:ClearSlot(slotIndex)
 	slot.Duration = nil
 	slot.IsCC = false
 	StopGlow(slot)
-	SetDesaturated(slot, false)
+	if slot.PandemicOverlay then
+		slot.PandemicOverlay:SetAlpha(0)
+	end
+	slot.Icon:SetDesaturation(0)
 end
 
 ---Marks a slot as unused and triggers a layout update.
