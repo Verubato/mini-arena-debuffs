@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3.2
+
+12.0.7 TOC bump.
+
 ## 2.3.1
 
 Secret value handling error fix.
