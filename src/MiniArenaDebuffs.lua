@@ -1,10 +1,16 @@
 ---@type string, Addon
 local addonName, addon = ...
 local mini = addon.Framework
+local wowEx = addon.WoWEx
 local IconSlotContainer = addon.IconSlotContainer
-local config = addon.Config
+local AuraContainerDisplay = addon.AuraContainerDisplay
+-- TEMPORARY dual path: on 12.1+ real displays are AuraContainerDisplays (the engine tracks and
+-- renders the auras); on 12.0 they are IconSlotContainers fed by legacy aura reads. Remove the
+-- legacy path once 12.1 is live everywhere. Test mode always uses IconSlotContainers - it only
+-- renders synthetic cooldowns, which needs no aura API on either client.
+local useAuraContainers = wowEx:UseAuraContainers()
 local eventsFrame
----@type { Container: IconSlotContainer, Unit: string }
+---@type { Container: IconSlotContainer|AuraContainerDisplay, Unit: string }
 local entries = {}
 ---@type IconSlotContainer[]
 local testContainers = {}
@@ -13,8 +19,6 @@ local testMode = false
 local maxTestFrames = 3
 ---@type Db
 local db
----@type Db
-local dbDefaults = config.DbDefaults
 local testSpells = {
 	33786, -- Cyclone
 	118,   -- Polymorph
@@ -68,6 +72,23 @@ local function CreateContainer()
 	container:SetPandemicDesaturate(db.Icons.PandemicDesaturate or false)
 	ApplyGrowDirection(container)
 	return container
+end
+
+---Pushes the current settings onto a 12.1 AuraContainerDisplay; the engine handles the aura
+---tracking itself, so this replaces both UpdateContainerOptions and UpdateContainer there.
+local function UpdateDisplayOptions(display)
+	display:SetMaxIcons(db.MaxIcons or 6)
+	display:SetIconSize(db.Icons.Size or 36)
+	display:SetSpacing(db.Icons.Spacing or 2)
+	display:SetGrow(db.Grow or "RIGHT")
+	display:SetSortMethod(db.SortMethod, db.SortDirection)
+	display:SetHideUnimportant(db.Icons.HideUnimportant or false)
+	display:SetStyle({
+		ReverseCooldown = db.Icons.ReverseCooldown,
+		HideSwipe = db.Icons.HideSwipe,
+		HideNumbers = db.Icons.HideNumbers,
+		FontScale = db.Icons.FontScale or 1.0,
+	})
 end
 
 local function UpdateContainer(container, unit)
@@ -152,6 +173,10 @@ end
 
 local function AnchorContainer(container, anchor)
 	local grow = db.Grow or "RIGHT"
+	if useAuraContainers and grow == "CENTER" then
+		-- The container's size can be secret on 12.1, so a centred row can't be positioned.
+		grow = "RIGHT"
+	end
 	local anchorPoint, relativePoint
 	if grow == "LEFT" then
 		anchorPoint = "RIGHT"
@@ -192,7 +217,13 @@ local function EnsureEntry(anchor)
 	local entry = entries[anchor]
 
 	if not entry then
-		local container = CreateContainer()
+		local container
+		if useAuraContainers then
+			container = AuraContainerDisplay:New(UIParent, unit, db.MaxIcons or 6, db.Icons.Size or 36, db.Icons.Spacing or 2)
+			container.Frame:Hide()
+		else
+			container = CreateContainer()
+		end
 		entry = { Container = container, Unit = unit }
 		entries[anchor] = entry
 	else
@@ -313,7 +344,8 @@ local function RealMode()
 		currentAnchors[anchor] = true
 	end
 
-	-- Update or hide each entry
+	-- Update or hide each entry (hidden AuraContainers unregister their events, so Hide is
+	-- also the cheap parked state on 12.1)
 	for anchor, entry in pairs(entries) do
 		if not currentAnchors[anchor] then
 			entry.Container.Frame:Hide()
@@ -321,9 +353,15 @@ local function RealMode()
 			local unit = anchor.unit or anchor:GetAttribute("unit")
 			entry.Unit = unit
 
-			UpdateContainerOptions(entry.Container)
-			AnchorContainer(entry.Container, anchor)
-			UpdateContainer(entry.Container, entry.Unit)
+			if useAuraContainers then
+				UpdateDisplayOptions(entry.Container)
+				entry.Container:SetUnit(unit)
+				AnchorContainer(entry.Container, anchor)
+			else
+				UpdateContainerOptions(entry.Container)
+				AnchorContainer(entry.Container, anchor)
+				UpdateContainer(entry.Container, entry.Unit)
+			end
 			entry.Container.Frame:Show()
 		end
 	end
@@ -376,6 +414,11 @@ local function TestMode()
 end
 
 local function UpdateUnitAuraRegistration()
+	-- 12.1: AuraContainers react to aura changes internally; the addon never reads UNIT_AURA.
+	if useAuraContainers then
+		return
+	end
+
 	eventsFrame:UnregisterEvent("UNIT_AURA")
 	local seen = {}
 	local unitList = {}
@@ -472,9 +515,11 @@ mini:WaitForAddonLoad(OnAddonLoaded)
 
 ---@class Addon
 ---@field Framework MiniFramework
+---@field WoWEx WoWEx
 ---@field Scheduler Scheduler
 ---@field Config Config
 ---@field CustomAnchors table
 ---@field IconSlotContainer IconSlotContainer
+---@field AuraContainerDisplay AuraContainerDisplay
 ---@field Refresh fun(self: table)
 ---@field ToggleTest fun(self: table)

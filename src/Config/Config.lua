@@ -2,7 +2,10 @@
 local addonName, addon = ...
 local mini = addon.Framework
 local dropdownWidth = 200
-local growOptions = { "RIGHT", "LEFT", "CENTER" }
+-- TEMPORARY dual path: CENTER can't be positioned on 12.1 (container sizes can be secret);
+-- fold the two lists back together once 12.1 is live everywhere.
+local useAuraContainers = addon.WoWEx:UseAuraContainers()
+local growOptions = useAuraContainers and { "RIGHT", "LEFT" } or { "RIGHT", "LEFT", "CENTER" }
 local sortMethods = { "INDEX", "TIME" }
 local sortDirections = { "+", "-" }
 local verticalSpacing = mini.VerticalSpacing
@@ -167,7 +170,10 @@ function M:Init()
 
 	local lines = mini:TextBlock({
 		Parent = panel,
-		Lines = {
+		Lines = useAuraContainers and {
+			"Shows your debuffs on arena frames.",
+			"Note: Blizzard's 12.1 patch removed addon access to aura information, so the pandemic glow/desaturate options are no longer possible and have been removed.",
+		} or {
 			"Shows your debuffs on arena frames.",
 		},
 	})
@@ -230,33 +236,42 @@ function M:Init()
 	})
 	hideUnimportant:SetPoint("TOPLEFT", lines, "BOTTOMLEFT", columnWidth * 3 - 4, -verticalSpacing)
 
-	local pandemicGlow = mini:Checkbox({
-		Parent = panel,
-		LabelText = "Glow on Pandemic",
-		Tooltip = "Glows icons during the pandemic window (last 30% of the debuff's duration).",
-		GetValue = function()
-			return db.Icons.PandemicGlow
-		end,
-		SetValue = function(v)
-			db.Icons.PandemicGlow = v
-			ApplySettings()
-		end,
-	})
-	pandemicGlow:SetPoint("TOPLEFT", reverseSwipe, "BOTTOMLEFT", 0, -verticalSpacing)
+	-- TEMPORARY dual path: pandemic visuals need per-aura remaining duration, which 12.1 no
+	-- longer exposes to addons; the sliders anchor straight to the first checkbox row there.
+	-- NOTE: 12.1.5 adds engine-side pandemic glow support - restore these options through that
+	-- API when it ships.
+	local sliderAnchor = reverseSwipe
+	if not useAuraContainers then
+		local pandemicGlow = mini:Checkbox({
+			Parent = panel,
+			LabelText = "Glow on Pandemic",
+			Tooltip = "Glows icons during the pandemic window (last 30% of the debuff's duration).",
+			GetValue = function()
+				return db.Icons.PandemicGlow
+			end,
+			SetValue = function(v)
+				db.Icons.PandemicGlow = v
+				ApplySettings()
+			end,
+		})
+		pandemicGlow:SetPoint("TOPLEFT", reverseSwipe, "BOTTOMLEFT", 0, -verticalSpacing)
 
-	local pandemicDesaturate = mini:Checkbox({
-		Parent = panel,
-		LabelText = "Desaturate on Pandemic",
-		Tooltip = "Desaturates icons during the pandemic window (last 30% of the debuff's duration).",
-		GetValue = function()
-			return db.Icons.PandemicDesaturate
-		end,
-		SetValue = function(v)
-			db.Icons.PandemicDesaturate = v
-			ApplySettings()
-		end,
-	})
-	pandemicDesaturate:SetPoint("TOPLEFT", hideSwipe, "BOTTOMLEFT", 0, -verticalSpacing)
+		local pandemicDesaturate = mini:Checkbox({
+			Parent = panel,
+			LabelText = "Desaturate on Pandemic",
+			Tooltip = "Desaturates icons during the pandemic window (last 30% of the debuff's duration).",
+			GetValue = function()
+				return db.Icons.PandemicDesaturate
+			end,
+			SetValue = function(v)
+				db.Icons.PandemicDesaturate = v
+				ApplySettings()
+			end,
+		})
+		pandemicDesaturate:SetPoint("TOPLEFT", hideSwipe, "BOTTOMLEFT", 0, -verticalSpacing)
+
+		sliderAnchor = pandemicGlow
+	end
 
 	local iconSize = mini:Slider({
 		Parent = panel,
@@ -273,7 +288,7 @@ function M:Init()
 			ApplySettings()
 		end,
 	})
-	iconSize.Slider:SetPoint("TOPLEFT", pandemicGlow, "BOTTOMLEFT", 4, -verticalSpacing * 2)
+	iconSize.Slider:SetPoint("TOPLEFT", sliderAnchor, "BOTTOMLEFT", 4, -verticalSpacing * 2)
 
 	local iconSpacing = mini:Slider({
 		Parent = panel,
