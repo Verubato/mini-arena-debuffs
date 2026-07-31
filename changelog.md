@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.0.1
+
+Fixed placeholder debuff icons showing in edit mode.
+
 ## 3.0.0
 
 12.1 support.
