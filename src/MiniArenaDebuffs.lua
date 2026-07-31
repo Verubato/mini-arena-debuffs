@@ -67,7 +67,7 @@ local function CreateContainer()
 		db.Icons.Spacing or 2,
 		"MiniArenaDebuffs"
 	)
-	container.Frame:Hide()
+	container:Hide()
 	container:SetPandemicGlow(db.Icons.PandemicGlow or false)
 	container:SetPandemicDesaturate(db.Icons.PandemicDesaturate or false)
 	ApplyGrowDirection(container)
@@ -220,7 +220,7 @@ local function EnsureEntry(anchor)
 		local container
 		if useAuraContainers then
 			container = AuraContainerDisplay:New(UIParent, unit, db.MaxIcons or 6, db.Icons.Size or 36, db.Icons.Spacing or 2)
-			container.Frame:Hide()
+			container:Hide()
 		else
 			container = CreateContainer()
 		end
@@ -331,7 +331,7 @@ end
 local function RealMode()
 	-- Hide all test containers
 	for _, container in pairs(testContainers) do
-		container.Frame:Hide()
+		container:Hide()
 	end
 
 	for _, tf in ipairs(testArenaFrames) do
@@ -348,7 +348,7 @@ local function RealMode()
 	-- also the cheap parked state on 12.1)
 	for anchor, entry in pairs(entries) do
 		if not currentAnchors[anchor] then
-			entry.Container.Frame:Hide()
+			entry.Container:Hide()
 		else
 			local unit = anchor.unit or anchor:GetAttribute("unit")
 			entry.Unit = unit
@@ -362,7 +362,7 @@ local function RealMode()
 				AnchorContainer(entry.Container, anchor)
 				UpdateContainer(entry.Container, entry.Unit)
 			end
-			entry.Container.Frame:Show()
+			entry.Container:Show()
 		end
 	end
 end
@@ -370,7 +370,7 @@ end
 local function TestMode()
 	-- Hide real containers
 	for _, entry in pairs(entries) do
-		entry.Container.Frame:Hide()
+		entry.Container:Hide()
 	end
 
 	-- Try to anchor onto real visible frames first
@@ -382,7 +382,7 @@ local function TestMode()
 			anyRealShown = true
 			local container = EnsureTestContainer(i)
 			AnchorContainer(container, anchor)
-			container.Frame:Show()
+			container:Show()
 		end
 	end
 
@@ -394,7 +394,7 @@ local function TestMode()
 		-- Hide any extra test containers not used
 		for i = #anchors + 1, maxTestFrames do
 			if testContainers[i] then
-				testContainers[i].Frame:Hide()
+				testContainers[i]:Hide()
 			end
 		end
 
@@ -408,7 +408,7 @@ local function TestMode()
 		local container = EnsureTestContainer(i)
 		local testFrame = testArenaFrames[i]
 		AnchorContainer(container, testFrame)
-		container.Frame:Show()
+		container:Show()
 		testFrame:Show()
 	end
 end

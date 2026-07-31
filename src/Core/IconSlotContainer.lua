@@ -204,6 +204,26 @@ function M:New(parent, count, size, spacing, groupName)
 	return instance
 end
 
+---Shows or hides the container. Mirrors AuraContainerDisplay's setter so callers holding either
+---kind of container can use the same call.
+---@param shown boolean
+function M:SetShown(shown)
+	self.Frame:SetShown(shown == true)
+end
+
+function M:Show()
+	self:SetShown(true)
+end
+
+function M:Hide()
+	self:SetShown(false)
+end
+
+---@return boolean
+function M:IsShown()
+	return self.Frame:IsShown() == true
+end
+
 ---Enables or disables the pandemic-window glow for this container's slots.
 ---@param enabled boolean
 function M:SetPandemicGlow(enabled)

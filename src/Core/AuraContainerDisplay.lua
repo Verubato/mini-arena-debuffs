@@ -4,6 +4,9 @@ local wowEx = addon.WoWEx
 local frameIdCounter = 0
 local groupKey = "debuffs"
 local filter = "HARMFUL|PLAYER"
+local liveDisplays = {}
+local editModePreviewActive = false
+local providerSwitchListener = nil
 
 -- 12.1 AuraContainer-backed debuff display. Wraps a CreateFrame("AuraContainer") with a single
 -- aura group (the player's harmful auras on the unit) and styles the container-created
@@ -49,6 +52,56 @@ local growLayouts = {
 local function NextFrameName(frameType)
 	frameIdCounter = frameIdCounter + 1
 	return addonName .. "_AC_" .. frameType .. "_" .. frameIdCounter
+end
+
+-- Edit Mode preview suppression.
+--
+-- Blizzard force-feeds every AuraContainer a fake data provider while Edit Mode is open, so
+-- our containers fill up with placeholder auras ("Poison 1", "Buff 1", ... with random spellbook
+-- icons) that have nothing to do with the tracked unit. There is no opt-out: the container
+-- registers AURA_DATA_PROVIDER_SWITCH as a *static* event in OnLoad_Intrinsic (so SetEnabled and
+-- visibility don't gate it), and the switch flips ManagedAuraContainerPrivateMixin's aura source
+-- list to AuraContainerAuraSourceLists.EditMode. SetUseEditModeSource lives on the private mixin
+-- only, so addons can't call it.
+--
+-- Hiding the container does work, and is the intended escape hatch: dirty processing runs under
+-- Enum.OnUpdateMode.RunWhenVisibleOnce, so a hidden container never parses the fake auras at all,
+-- and OnShow_Intrinsic issues a full refresh from live data on the way back out.
+--
+-- Displays are re-anchored constantly, so suppression can't live on an intermediate holder frame.
+-- Instead every display remembers the visibility the addon asked for and the real frame shows
+-- only when the preview isn't running.
+
+---@param instance AuraContainerDisplay
+local function ApplyShownState(instance)
+	instance.Frame:SetShown(instance.DesiredShown and not editModePreviewActive)
+end
+
+local function OnAuraDataProviderSwitch(useRealDataProvider)
+	local previewActive = useRealDataProvider ~= true
+	if editModePreviewActive == previewActive then
+		return
+	end
+
+	editModePreviewActive = previewActive
+
+	for _, instance in ipairs(liveDisplays) do
+		ApplyShownState(instance)
+	end
+end
+
+---Starts listening for the Edit Mode data provider switch. Called from New rather than at load,
+---because the event only exists on clients that have the AuraContainer system.
+local function EnsureProviderSwitchListener()
+	if providerSwitchListener then
+		return
+	end
+
+	providerSwitchListener = CreateFrame("Frame")
+	providerSwitchListener:RegisterEvent("AURA_DATA_PROVIDER_SWITCH")
+	providerSwitchListener:SetScript("OnEvent", function(_, _, useRealDataProvider)
+		OnAuraDataProviderSwitch(useRealDataProvider)
+	end)
 end
 
 local function GetCooldownFontString(cd)
@@ -165,11 +218,17 @@ function M:New(parent, unit, maxIcons, size, spacing)
 	-- button -> Cooldown widget for restyling.
 	instance.ButtonCooldowns = {}
 	instance.HideUnimportant = false
+	-- Visibility the addon last asked for; frames are created shown.
+	instance.DesiredShown = true
 
 	local frame = CreateFrame("AuraContainer", NextFrameName("Container"), parent, "CustomAuraContainerTemplate")
 	frame:SetIgnoreParentScale(true)
 	frame:SetIgnoreParentAlpha(true)
 	instance.Frame = frame
+
+	EnsureProviderSwitchListener()
+	liveDisplays[#liveDisplays + 1] = instance
+	ApplyShownState(instance)
 
 	frame:SetUnit(unit or "none")
 	ApplyFlowLayout(instance)
@@ -191,6 +250,29 @@ end
 ---@param unit string?
 function M:SetUnit(unit)
 	self.Frame:SetUnit(unit or "none")
+end
+
+---Shows or hides the display. Always use this instead of touching Frame:SetShown directly, so
+---the Edit Mode placeholder auras stay suppressed (see EnsureProviderSwitchListener).
+---@param shown boolean
+function M:SetShown(shown)
+	self.DesiredShown = shown == true
+	ApplyShownState(self)
+end
+
+function M:Show()
+	self:SetShown(true)
+end
+
+function M:Hide()
+	self:SetShown(false)
+end
+
+---The visibility the addon asked for, which is not the frame's actual state while the Edit Mode
+---preview is suppressing it.
+---@return boolean
+function M:IsShown()
+	return self.DesiredShown
 end
 
 ---@param maxIcons number
@@ -319,3 +401,4 @@ end
 ---@field Buttons table[]
 ---@field ButtonCooldowns table<table, table>
 ---@field HideUnimportant boolean
+---@field DesiredShown boolean
