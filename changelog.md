@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.0
+
+New MiniFramework added across all my mini addons.
+
 ## 3.0.1
 
 Fixed placeholder debuff icons showing in edit mode.
