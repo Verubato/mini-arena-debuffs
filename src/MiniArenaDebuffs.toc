@@ -11,11 +11,10 @@
 Libs\LibStub\LibStub.lua
 Libs\LibCustomGlow-1.0\LibCustomGlow-1.0.xml
 
-Core\MiniFramework.lua
+Libs\MiniFramework\MiniFramework.xml
 Core\WoWEx.lua
 Core\IconSlotContainer.lua
 Core\AuraContainerDisplay.lua
-Core\Scheduler.lua
 Config\Config.lua
 Config\CustomAnchors.lua
 MiniArenaDebuffs.lua

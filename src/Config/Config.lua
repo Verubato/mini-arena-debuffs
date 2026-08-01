@@ -163,12 +163,7 @@ function M:Init()
 		return
 	end
 
-	local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-	local version = C_AddOns.GetAddOnMetadata(addonName, "Version")
-	title:SetPoint("TOPLEFT", 0, -verticalSpacing)
-	title:SetText(string.format("%s - %s", addonName, version))
-
-	local lines = mini:TextBlock({
+	local header = mini:PanelHeader({
 		Parent = panel,
 		Lines = useAuraContainers and {
 			"Shows your debuffs on arena frames.",
@@ -176,9 +171,8 @@ function M:Init()
 		} or {
 			"Shows your debuffs on arena frames.",
 		},
+		Gap = 6,
 	})
-
-	lines:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
 
 	local reverseSwipe = mini:Checkbox({
 		Parent = panel,
@@ -192,7 +186,7 @@ function M:Init()
 			ApplySettings()
 		end,
 	})
-	reverseSwipe:SetPoint("TOPLEFT", lines, "BOTTOMLEFT", -4, -verticalSpacing)
+	reverseSwipe:SetPoint("TOPLEFT", header.Anchor, "BOTTOMLEFT", -4, -verticalSpacing)
 
 	local hideSwipe = mini:Checkbox({
 		Parent = panel,
@@ -206,7 +200,7 @@ function M:Init()
 			ApplySettings()
 		end,
 	})
-	hideSwipe:SetPoint("TOPLEFT", lines, "BOTTOMLEFT", columnWidth - 4, -verticalSpacing)
+	hideSwipe:SetPoint("TOPLEFT", header.Anchor, "BOTTOMLEFT", columnWidth - 4, -verticalSpacing)
 
 	local hideNumbers = mini:Checkbox({
 		Parent = panel,
@@ -220,7 +214,7 @@ function M:Init()
 			ApplySettings()
 		end,
 	})
-	hideNumbers:SetPoint("TOPLEFT", lines, "BOTTOMLEFT", columnWidth * 2 - 4, -verticalSpacing)
+	hideNumbers:SetPoint("TOPLEFT", header.Anchor, "BOTTOMLEFT", columnWidth * 2 - 4, -verticalSpacing)
 
 	local hideUnimportant = mini:Checkbox({
 		Parent = panel,
@@ -234,7 +228,7 @@ function M:Init()
 			ApplySettings()
 		end,
 	})
-	hideUnimportant:SetPoint("TOPLEFT", lines, "BOTTOMLEFT", columnWidth * 3 - 4, -verticalSpacing)
+	hideUnimportant:SetPoint("TOPLEFT", header.Anchor, "BOTTOMLEFT", columnWidth * 3 - 4, -verticalSpacing)
 
 	-- TEMPORARY dual path: pandemic visuals need per-aura remaining duration, which 12.1 no
 	-- longer exposes to addons; the sliders anchor straight to the first checkbox row there.

@@ -477,7 +477,6 @@ end
 
 local function OnAddonLoaded()
 	addon.Config:Init()
-	addon.Scheduler:Init()
 
 	db = mini:GetSavedVars()
 
@@ -516,7 +515,6 @@ mini:WaitForAddonLoad(OnAddonLoaded)
 ---@class Addon
 ---@field Framework MiniFramework
 ---@field WoWEx WoWEx
----@field Scheduler Scheduler
 ---@field Config Config
 ---@field CustomAnchors table
 ---@field IconSlotContainer IconSlotContainer

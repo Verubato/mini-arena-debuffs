@@ -1,8 +1,7 @@
 ---@type string, Addon
-local addonName, addon = ...
+local _, addon = ...
 local mini = addon.Framework
 local verticalSpacing = mini.VerticalSpacing
-local horizontalSpacing = mini.HorizontalSpacing
 ---@type Db
 local db
 
@@ -30,20 +29,17 @@ function M:Init(category)
 
 	mini:AddSubCategory(category, panel)
 
-	local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-	title:SetPoint("TOPLEFT", 0, -verticalSpacing)
-	title:SetText("Custom Anchors")
-
-	local desc = mini:TextBlock({
+	local header = mini:PanelHeader({
 		Parent = panel,
+		Title = "Custom Anchors",
 		Lines = {
 			"Override which frame each arena slot anchors to.",
 			"Useful for frame addons such as ElvUI or GladiusEx.",
 			"Leave blank to use the default arena frames.",
 		},
 	})
-	desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
 
+	local desc = header.Anchor
 	local anchorWidth = 300
 
 	local arena1 = mini:EditBox({
