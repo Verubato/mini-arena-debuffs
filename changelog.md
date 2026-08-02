@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.1
+
+Fixed the addon version showing on config sub-panels.
+
 ## 3.1.0
 
 New MiniFramework added across all my mini addons.
