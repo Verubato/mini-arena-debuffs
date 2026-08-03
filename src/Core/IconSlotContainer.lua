@@ -22,16 +22,18 @@ local pandemicTicker
 -- Reused across Layout() calls to avoid table allocation on the hot path
 local layoutScratch = {}
 local frameIdCounter = 0
-local function NextFrameName(frameType)
-	frameIdCounter = frameIdCounter + 1
-	return addonName .. "_" .. frameType .. "_" .. frameIdCounter
-end
-
 ---@class IconSlotContainer
 local M = {}
 M.__index = M
 
 addon.IconSlotContainer = M
+
+local procGlowOptions = { key = "pandemic", startAnim = false }
+
+local function NextFrameName(frameType)
+	frameIdCounter = frameIdCounter + 1
+	return addonName .. "_" .. frameType .. "_" .. frameIdCounter
+end
 
 local function ScheduleMasqueReSkin(group)
 	if not group or masqueReskinPending[group] then
@@ -73,8 +75,6 @@ local function UpdateCooldownFontSize(cd, iconSize, fontScale)
 	local fontSize = math.max(1, math.floor(iconSize * 0.4 * (fontScale or 1.0)))
 	region:SetFont(font, fontSize, flags)
 end
-
-local procGlowOptions = { key = "pandemic", startAnim = false }
 
 -- Glow is hosted on slot.PandemicOverlay so its visibility can be gated by SetAlpha
 -- without dimming the icon. The animation loops continuously while started; the

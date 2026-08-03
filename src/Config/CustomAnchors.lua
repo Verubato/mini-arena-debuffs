@@ -5,6 +5,7 @@ local verticalSpacing = mini.VerticalSpacing
 ---@type Db
 local db
 
+---@class CustomAnchors
 local M = {}
 addon.CustomAnchors = M
 
