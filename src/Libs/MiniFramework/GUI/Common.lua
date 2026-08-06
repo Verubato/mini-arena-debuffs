@@ -10,6 +10,7 @@ local PALETTE_KEYS = {
 	TabTextIdle = true,
 	TabTextHover = true,
 	TabTextSelected = true,
+	TabTextBright = true,
 	DividerLine = true,
 	DividerGold = true,
 	TitleText = true,
@@ -27,6 +28,9 @@ GUI.TabTextHover = { r = 0.91, g = 0.89, b = 0.85 }
 -- The selected tab, in every tab control. Gold rather than white so it reads as chosen at a
 -- glance, next to a strip of near-white idle labels.
 GUI.TabTextSelected = { r = 1, g = 0.82, b = 0 }
+-- Hover for a vertical tab, which idles at TabTextHover already and so needs something brighter
+-- again to respond to the mouse at all.
+GUI.TabTextBright = { r = 1, g = 1, b = 1 }
 -- Divider rules and label (muted gold - the one deliberate nod to the WoW default palette).
 GUI.DividerLine = { r = 0.42, g = 0.35, b = 0.25 }
 GUI.DividerGold = { r = 0.81, g = 0.66, b = 0.31 }

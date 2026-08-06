@@ -14,6 +14,7 @@ function M:CreateTabs(options)
 	local tabTextIdle = GUI.TabTextIdle
 	local tabTextHover = GUI.TabTextHover
 	local tabTextSelected = GUI.TabTextSelected
+	local tabTextBright = GUI.TabTextBright
 
 	local parent = options.Parent
 	local vertical = options.Vertical
@@ -184,7 +185,7 @@ function M:CreateTabs(options)
 		btn:SetScript("OnEnter", function()
 			if selectedKey ~= def.Key then
 				if vertical then
-					btn.Text:SetTextColor(1, 1, 1, 1)
+					btn.Text:SetTextColor(tabTextBright.r, tabTextBright.g, tabTextBright.b, 1)
 				else
 					btn.Text:SetTextColor(tabTextHover.r, tabTextHover.g, tabTextHover.b, 1)
 				end
