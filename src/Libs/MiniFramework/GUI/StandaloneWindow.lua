@@ -203,12 +203,31 @@ function M:CreateStandaloneWindow(options)
 	titleText:SetText(options.Title or "")
 	titleText:SetTextColor(titleColor.r, titleColor.g, titleColor.b, 1)
 
-	-- Optional subtitle / version beside title
+	-- Optional subtitle / version beside the title, set in a small chip so it reads as a
+	-- deliberate badge rather than debug output trailing the logo.
+	-- Optional subtitle / version beside the title: a size smaller and dimmer than the
+	-- logotype, baseline-aligned, so it reads as a quiet annotation rather than debug output.
 	if options.Subtitle then
-		local subtitleText = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-		subtitleText:SetPoint("LEFT", titleText, "RIGHT", 8, -1)
+		local subtitleText = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+
+		-- The title's own face at two thirds the size, so the pair always match whatever font
+		-- the logotype uses.
+		local titleFont, titleSize, titleFlags = titleText:GetFont()
+		local subtitleSize = math.floor((titleSize or 16) * 0.65 + 0.5)
+		if titleFont then
+			subtitleText:SetFont(titleFont, subtitleSize, titleFlags)
+		end
+
 		subtitleText:SetText(options.Subtitle)
-		subtitleText:SetTextColor(0.80, 0.80, 0.80, 1)
+		subtitleText:SetTextColor(0.55, 0.52, 0.48, 1)
+
+		-- Bottom-anchoring two font sizes leaves the smaller text sitting low: a fontstring's
+		-- bottom is baseline minus descent, and the larger font descends further. Lift by the
+		-- descent difference (Friz Quadrata descends roughly a quarter of its size) so the two
+		-- BASELINES line up instead of the frame edges.
+		local lift = math.floor(((titleSize or 16) - subtitleSize) * 0.25 + 0.5)
+		subtitleText:SetPoint("BOTTOMLEFT", titleText, "BOTTOMRIGHT", 8, lift)
+
 		window.SubtitleText = subtitleText
 	end
 

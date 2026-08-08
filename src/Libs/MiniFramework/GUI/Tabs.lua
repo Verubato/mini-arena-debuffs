@@ -15,6 +15,8 @@ function M:CreateTabs(options)
 	local tabTextHover = GUI.TabTextHover
 	local tabTextSelected = GUI.TabTextSelected
 	local tabTextBright = GUI.TabTextBright
+	local dividerGold = GUI.DividerGold
+	local dividerLine = GUI.DividerLine
 
 	local parent = options.Parent
 	local vertical = options.Vertical
@@ -160,9 +162,61 @@ function M:CreateTabs(options)
 	end
 
 	controller.Tabs = tabs
+	-- The strip frame itself, so callers can hang a footer in space held back by FooterReserve.
+	controller.Strip = strip
+
+	-- A def of { Separator = true } draws a grouping line before the NEXT tab instead of a
+	-- button, and { Heading = "Title" } draws a gold section label in the panel-divider style.
+	-- Filtered out here so the button loop, the key index and the content list only ever see
+	-- real tabs; horizontal strips ignore both entirely.
+	local defs = {}
+	local separatorBefore = {}
+	for _, def in ipairs(options.Tabs) do
+		if def.Separator or def.Heading then
+			separatorBefore[#defs + 1] = def.Heading or true
+		else
+			defs[#defs + 1] = def
+		end
+	end
+
+	-- Height the separators and headings add over plain button-to-button spacing, so
+	-- TabFitToParent can hand out only what is actually left for the buttons.
+	local decorationHeight = 0
+
+	---Builds a section heading: the panel divider's gold label at strip size, with the tail
+	---fading out toward the right edge. Anchored below anchorTo, or to the strip top for a
+	---heading that opens the list. Returns the frame the next button anchors to.
+	local function CreateHeading(title, anchorTo)
+		local head = CreateFrame("Frame", nil, strip)
+		head:SetHeight(18)
+
+		if anchorTo then
+			head:SetPoint("TOPLEFT", anchorTo, "BOTTOMLEFT", 0, -tabSpacing - 4)
+			head:SetPoint("TOPRIGHT", anchorTo, "BOTTOMRIGHT", 0, -tabSpacing - 4)
+			decorationHeight = decorationHeight + 24
+		else
+			head:SetPoint("TOPLEFT", strip, "TOPLEFT", 0, 0)
+			head:SetPoint("TOPRIGHT", strip, "TOPRIGHT", 0, 0)
+			decorationHeight = decorationHeight + 20
+		end
+
+		local label = head:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		label:SetText(tostring(title):upper())
+		label:SetTextColor(dividerGold.r, dividerGold.g, dividerGold.b, 1)
+		label:SetPoint("BOTTOMLEFT", head, "BOTTOMLEFT", 10, 2)
+
+		local tail = head:CreateTexture(nil, "OVERLAY")
+		pixel.SetHeight(tail, 1)
+		GUI.SetGradientH(tail, dividerLine.r, dividerLine.g, dividerLine.b, 0.6,
+			dividerLine.r, dividerLine.g, dividerLine.b, 0)
+		pixel.SetPoint(tail, "LEFT", label, "RIGHT", 8, -1)
+		pixel.SetPoint(tail, "RIGHT", head, "RIGHT", -8, -1)
+
+		return head
+	end
 
 	local prev
-	for i, def in ipairs(options.Tabs) do
+	for i, def in ipairs(defs) do
 		assert(def.Key and def.Key ~= "", "CreateTabs: each tab needs Key")
 		assert(not keyToIndex[def.Key], "CreateTabs: duplicate Key: " .. def.Key)
 
@@ -231,9 +285,26 @@ function M:CreateTabs(options)
 				btn.Text:SetPoint("LEFT", btn, "LEFT", 12, 0)
 			end
 
-			if not prev then
+			local heading = type(separatorBefore[i]) == "string" and separatorBefore[i] or nil
+
+			if heading then
+				local head = CreateHeading(heading, prev)
+				btn:SetPoint("TOPLEFT", head, "BOTTOMLEFT", 0, -2)
+				btn:SetPoint("TOPRIGHT", head, "BOTTOMRIGHT", 0, -2)
+			elseif not prev then
 				btn:SetPoint("TOPLEFT", strip, "TOPLEFT", 0, 0)
 				btn:SetPoint("TOPRIGHT", strip, "TOPRIGHT", 0, 0)
+			elseif separatorBefore[i] then
+				-- Inset from both edges so it reads as a grouping line, not a border. The
+				-- button undoes the inset to get back to the strip's full width.
+				local line = strip:CreateTexture(nil, "OVERLAY")
+				pixel.SetHeight(line, 1)
+				GUI.SetSolid(line, 1, 1, 1, 0.10)
+				line:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 8, -tabSpacing - 4)
+				line:SetPoint("TOPRIGHT", prev, "BOTTOMRIGHT", -8, -tabSpacing - 4)
+				btn:SetPoint("TOPLEFT", line, "BOTTOMLEFT", -8, -tabSpacing - 4)
+				btn:SetPoint("TOPRIGHT", line, "BOTTOMRIGHT", 8, -tabSpacing - 4)
+				decorationHeight = decorationHeight + tabSpacing + 9
 			else
 				btn:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -tabSpacing)
 				btn:SetPoint("TOPRIGHT", prev, "BOTTOMRIGHT", 0, -tabSpacing)
@@ -269,8 +340,40 @@ function M:CreateTabs(options)
 			local scrollContainer = CreateFrame("Frame", nil, body)
 			scrollContainer:SetAllPoints(body)
 
+			-- Fixed page header above the scroll area: the tab's icon and title anchor the page
+			-- and never scroll away with it. The panel's own content flows underneath.
+			local headerOffset = 0
+			if options.PageHeader and def.Title and def.PageHeader ~= false then
+				local header = CreateFrame("Frame", nil, scrollContainer)
+				header:SetHeight(30)
+				header:SetPoint("TOPLEFT", scrollContainer, "TOPLEFT", 0, 0)
+				header:SetPoint("TOPRIGHT", scrollContainer, "TOPRIGHT", -14, 0)
+
+				local headerIcon
+				if def.Icon then
+					headerIcon = header:CreateTexture(nil, "ARTWORK")
+					headerIcon:SetSize(20, 20)
+					headerIcon:SetPoint("LEFT", header, "LEFT", 0, 2)
+					headerIcon:SetTexture(def.Icon)
+					headerIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+				end
+
+				local headerTitle = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+				if headerIcon then
+					headerTitle:SetPoint("LEFT", headerIcon, "RIGHT", 8, 0)
+				else
+					headerTitle:SetPoint("LEFT", header, "LEFT", 0, 2)
+				end
+				-- The section dividers' muted gold, so the page title and the dividers under it
+				-- read as one family.
+				headerTitle:SetText(def.Title)
+				headerTitle:SetTextColor(dividerGold.r, dividerGold.g, dividerGold.b, 1)
+
+				headerOffset = 30 + 10
+			end
+
 			local scrollFrame = CreateFrame("ScrollFrame", nil, scrollContainer)
-			scrollFrame:SetPoint("TOPLEFT", scrollContainer, "TOPLEFT", 0, 0)
+			scrollFrame:SetPoint("TOPLEFT", scrollContainer, "TOPLEFT", 0, -headerOffset)
 			scrollFrame:SetPoint("BOTTOMRIGHT", scrollContainer, "BOTTOMRIGHT", -14, 0)
 			scrollFrame:EnableMouseWheel(true)
 			scrollFrame:SetScript("OnMouseWheel", function(sf, delta)
@@ -431,7 +534,8 @@ function M:CreateTabs(options)
 				if h == 0 or #tabs == 0 then
 					return
 				end
-				local btnH = math.floor((h - tabSpacing * (#tabs - 1)) / #tabs)
+				local reserved = decorationHeight + (options.FooterReserve or 0)
+				local btnH = math.floor((h - reserved - tabSpacing * (#tabs - 1)) / #tabs)
 				for _, tab in ipairs(tabs) do
 					tab.Button:SetHeight(math.max(16, btnH))
 				end
@@ -491,6 +595,8 @@ end
 ---@field ScrollContentHeight? number  Height of the scroll child (default 1400)
 ---@field ScrollContentWidth? number   Explicit width of the scroll child (default 800)
 ---@field TabFitToParent? boolean  Distribute tab buttons evenly across the strip width
+---@field PageHeader? boolean  ScrollBody only: fixed icon + title band above each page's scroll area. A tab def may opt out with PageHeader = false.
+---@field FooterReserve? number  Vertical strips only: height held back from TabFitToParent for a caller footer
 
 ---@class TabReturn
 ---@field Select fun(keyOrIndex: string|number)
