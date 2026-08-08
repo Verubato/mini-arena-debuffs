@@ -31,15 +31,15 @@ Feedback and feature requests are more than welcome!
 
 ## Screenshots
 
-![MiniArenaDebuffs screenshot](https://raw.githubusercontent.com/Verubato/mini-arena-debuffs/main/assets/Screenshot5.png)
+![MiniArenaDebuffs screenshot](https://raw.githubusercontent.com/Verubato/mini-arena-debuffs/main/assets/Screenshots/Arena5.png)
 
-![MiniArenaDebuffs screenshot](https://raw.githubusercontent.com/Verubato/mini-arena-debuffs/main/assets/Screenshot4.png)
+![MiniArenaDebuffs screenshot](https://raw.githubusercontent.com/Verubato/mini-arena-debuffs/main/assets/Screenshots/Arena4.png)
 
-![MiniArenaDebuffs screenshot](https://raw.githubusercontent.com/Verubato/mini-arena-debuffs/main/assets/Screenshot3.png)
+![MiniArenaDebuffs screenshot](https://raw.githubusercontent.com/Verubato/mini-arena-debuffs/main/assets/Screenshots/Arena3.png)
 
-![MiniArenaDebuffs screenshot](https://raw.githubusercontent.com/Verubato/mini-arena-debuffs/main/assets/Screenshot2.png)
+![MiniArenaDebuffs screenshot](https://raw.githubusercontent.com/Verubato/mini-arena-debuffs/main/assets/Screenshots/Arena2.png)
 
-![MiniArenaDebuffs screenshot](https://raw.githubusercontent.com/Verubato/mini-arena-debuffs/main/assets/Screenshot1.png)
+![MiniArenaDebuffs screenshot](https://raw.githubusercontent.com/Verubato/mini-arena-debuffs/main/assets/Screenshots/Arena1.png)
 
 ## Download
 
