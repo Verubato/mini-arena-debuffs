@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.2
+
+Updated the addon icon to the new shared Mini style.
+
 ## 3.1.1
 
 Fixed the addon version showing on config sub-panels.
