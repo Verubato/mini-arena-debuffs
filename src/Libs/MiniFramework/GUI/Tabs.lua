@@ -3,6 +3,16 @@ local M = addon.Framework
 local GUI = M.GUI
 local pixel = GUI.Pixel
 
+---Blizzard icons carry a baked border that the standard 0.08 crop trims away;
+---an addon's own textures are full-bleed art and render uncropped.
+local function SetTabIcon(texture, icon)
+	texture:SetTexture(icon)
+
+	if type(icon) == "number" or not icon:find("AddOns", 1, true) then
+		texture:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	end
+end
+
 ---@param options TabOptions
 ---@return TabReturn
 function M:CreateTabs(options)
@@ -276,10 +286,9 @@ function M:CreateTabs(options)
 			-- selection is carried by the wash and edge bar alone.
 			if def.Icon then
 				btn.Icon = btn:CreateTexture(nil, "ARTWORK")
-				btn.Icon:SetSize(16, 16)
-				btn.Icon:SetPoint("LEFT", btn, "LEFT", 10, 0)
-				btn.Icon:SetTexture(def.Icon)
-				btn.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+				btn.Icon:SetSize(20, 20)
+				btn.Icon:SetPoint("LEFT", btn, "LEFT", 8, 0)
+				SetTabIcon(btn.Icon, def.Icon)
 				btn.Text:SetPoint("LEFT", btn.Icon, "RIGHT", 8, 0)
 			else
 				btn.Text:SetPoint("LEFT", btn, "LEFT", 12, 0)
@@ -354,8 +363,7 @@ function M:CreateTabs(options)
 					headerIcon = header:CreateTexture(nil, "ARTWORK")
 					headerIcon:SetSize(20, 20)
 					headerIcon:SetPoint("LEFT", header, "LEFT", 0, 2)
-					headerIcon:SetTexture(def.Icon)
-					headerIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+					SetTabIcon(headerIcon, def.Icon)
 				end
 
 				local headerTitle = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -372,6 +380,11 @@ function M:CreateTabs(options)
 				headerOffset = 30 + 10
 			end
 
+			-- The one scroll range the wheel and the scrollbar both clamp against. The engine's
+			-- GetVerticalScrollRange lags behind scroll-child resizes, so trusting it would let
+			-- the wheel scroll a page whose scrollbar is hidden.
+			local maxScroll = 0
+
 			local scrollFrame = CreateFrame("ScrollFrame", nil, scrollContainer)
 			scrollFrame:SetPoint("TOPLEFT", scrollContainer, "TOPLEFT", 0, -headerOffset)
 			scrollFrame:SetPoint("BOTTOMRIGHT", scrollContainer, "BOTTOMRIGHT", -14, 0)
@@ -379,7 +392,6 @@ function M:CreateTabs(options)
 			scrollFrame:SetScript("OnMouseWheel", function(sf, delta)
 				local step = 40
 				local cur = sf:GetVerticalScroll()
-				local maxScroll = sf:GetVerticalScrollRange()
 				sf:SetVerticalScroll(delta > 0 and math.max(cur - step, 0) or math.min(cur + step, maxScroll))
 			end)
 
@@ -411,7 +423,6 @@ function M:CreateTabs(options)
 			-- A vertical slider puts its MINIMUM at the bottom, while scroll offset grows
 			-- downwards, so the two run opposite ways. Everything below converts between them
 			-- rather than letting a drag down scroll the content up.
-			local maxScroll = 0
 
 			---@param scroll number
 			---@return number
@@ -433,6 +444,7 @@ function M:CreateTabs(options)
 					thumb:SetHeight(math.max(20, scrollBar:GetHeight() * (frameH / childH)))
 				else
 					scrollBar:Hide()
+					scrollFrame:SetVerticalScroll(0)
 				end
 			end
 
@@ -467,8 +479,16 @@ function M:CreateTabs(options)
 							minBottom = b
 						end
 					end
-					local needed = math.ceil(top - minBottom) + 20
-					scrollChild:SetHeight(math.max(needed, scrollFrame:GetHeight()))
+					local contentHeight = math.ceil(top - minBottom)
+					local frameHeight = scrollFrame:GetHeight()
+
+					-- Bottom margin only when the page scrolls anyway; adding it to a page
+					-- that fits would itself create the scrollbar.
+					if contentHeight > frameHeight then
+						scrollChild:SetHeight(contentHeight + 20)
+					else
+						scrollChild:SetHeight(frameHeight)
+					end
 					UpdateScrollBar()
 				end)
 			end
