@@ -11,7 +11,7 @@ addon.CustomAnchors = M
 
 local function ApplySettings()
 	if InCombatLockdown() then
-		mini:Notify("Can't apply settings during combat.")
+		mini:NotifyWithPrefix("Can't apply settings during combat.")
 		return
 	end
 

@@ -144,7 +144,7 @@ end
 
 local function ApplySettings()
 	if InCombatLockdown() then
-		mini:Notify("Can't apply settings during combat.")
+		mini:NotifyWithPrefix("Can't apply settings during combat.")
 		return
 	end
 
@@ -485,7 +485,7 @@ function M:Init()
 
 				panel:MiniRefresh()
 				addon:Refresh()
-				mini:Notify("Settings reset to default.")
+				mini:NotifyWithPrefix("Settings reset to default.")
 			end,
 		})
 	end)

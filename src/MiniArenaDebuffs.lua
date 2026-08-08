@@ -154,7 +154,7 @@ local function GetOverrideAnchor(i)
 	local frame = _G[anchor]
 
 	if not frame then
-		mini:Notify("Bad anchor '%s' for arena%d.", anchor, i)
+		mini:NotifyWithPrefix("Bad anchor '%s' for arena%d.", anchor, i)
 		return nil
 	end
 
@@ -506,7 +506,7 @@ function addon:ToggleTest()
 	addon:Refresh()
 
 	if InCombatLockdown() then
-		mini:Notify("Can't test during combat, we'll test once combat drops.")
+		mini:NotifyWithPrefix("Can't test during combat, we'll test once combat drops.")
 	end
 end
 
