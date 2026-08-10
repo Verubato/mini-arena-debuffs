@@ -19,15 +19,79 @@ local testMode = false
 local maxTestFrames = 3
 ---@type Db
 local db
+-- Durations are staggered so the colour-by-time preview crosses every band (red under 5s,
+-- yellow to the minute, white above); the stack count previews the Show Stacks toggle.
 local testSpells = {
-	33786, -- Cyclone
-	118,   -- Polymorph
-	3355,  -- Freezing Trap
-	853,   -- Hammer of Justice
-	408,   -- Kidney Shot
+	{ Spell = 8921, Duration = 6 },               -- Moonfire
+	{ Spell = 34914, Duration = 12, Stacks = 2 }, -- Vampiric Touch
+	{ Spell = 188389, Duration = 20 },            -- Flame Shock
+	{ Spell = 1079, Duration = 45 },              -- Rip
+	{ Spell = 1822, Duration = 75 },              -- Rake
 }
 
 local filter = "HARMFUL|PLAYER"
+
+-- Parsed spell filter maps, rebuilt only when the configured text or mode changes. The display
+-- compares the maps by reference, so handing back the same tables makes an unchanged refresh
+-- free and a changed one a real re-filter.
+local spellFilterCache = {}
+
+local function GetSpellFilterMaps()
+	local sf = db.SpellFilter
+	local mode = (sf and sf.Mode) or "OFF"
+	local text = (sf and sf.Spells) or ""
+
+	if spellFilterCache.Mode ~= mode or spellFilterCache.Text ~= text then
+		spellFilterCache.Mode = mode
+		spellFilterCache.Text = text
+		spellFilterCache.Include = nil
+		spellFilterCache.Exclude = nil
+
+		if mode ~= "OFF" then
+			local map, count = {}, 0
+			for id in text:gmatch("%d+") do
+				local spellId = tonumber(id)
+				if spellId and spellId > 0 then
+					map[spellId] = true
+					count = count + 1
+				end
+			end
+
+			-- An empty include map would hide every debuff, so an empty list means no filter.
+			if count > 0 then
+				if mode == "INCLUDE" then
+					spellFilterCache.Include = map
+				else
+					spellFilterCache.Exclude = map
+				end
+			end
+		end
+	end
+
+	return spellFilterCache.Include, spellFilterCache.Exclude
+end
+
+---The configured pandemic ring tint as the {r, g, b} array the display style expects.
+---@return number[]
+local function GetPandemicColor()
+	local color = db.Icons.PandemicColor or {}
+	return { color.R or 1, color.G or 0.6, color.B or 0.1 }
+end
+
+---@return AuraDisplayStyle
+local function BuildStyle()
+	return {
+		ReverseCooldown = db.Icons.ReverseCooldown,
+		HideSwipe = db.Icons.HideSwipe,
+		HideNumbers = db.Icons.HideNumbers,
+		FontScale = db.Icons.FontScale or 1.0,
+		ShowStacks = db.Icons.ShowStacks,
+		ShowMilliseconds = db.Icons.ShowMilliseconds,
+		ColorCountdown = db.Icons.ColorCountdown,
+		PandemicBorder = db.Icons.PandemicBorder,
+		PandemicColor = GetPandemicColor(),
+	}
+end
 
 local function GetSortRule()
 	if db.SortMethod == "INDEX" then
@@ -56,6 +120,10 @@ local function UpdateContainerOptions(container)
 	container:SetFontScale(db.Icons.FontScale or 1.0)
 	container:SetPandemicGlow(db.Icons.PandemicGlow or false)
 	container:SetPandemicDesaturate(db.Icons.PandemicDesaturate or false)
+	-- Border previews the 12.1 engine ring; its toggle doesn't exist on 12.0.
+	container:SetPandemicBorder(useAuraContainers and db.Icons.PandemicBorder or false)
+	local pandemicColor = GetPandemicColor()
+	container:SetPandemicBorderColor(pandemicColor[1], pandemicColor[2], pandemicColor[3])
 	ApplyGrowDirection(container)
 end
 
@@ -70,6 +138,9 @@ local function CreateContainer()
 	container:Hide()
 	container:SetPandemicGlow(db.Icons.PandemicGlow or false)
 	container:SetPandemicDesaturate(db.Icons.PandemicDesaturate or false)
+	container:SetPandemicBorder(useAuraContainers and db.Icons.PandemicBorder or false)
+	local pandemicColor = GetPandemicColor()
+	container:SetPandemicBorderColor(pandemicColor[1], pandemicColor[2], pandemicColor[3])
 	ApplyGrowDirection(container)
 	return container
 end
@@ -78,17 +149,11 @@ end
 ---tracking itself, so this replaces both UpdateContainerOptions and UpdateContainer there.
 local function UpdateDisplayOptions(display)
 	display:SetMaxIcons(db.MaxIcons or 6)
-	display:SetIconSize(db.Icons.Size or 36)
-	display:SetSpacing(db.Icons.Spacing or 2)
 	display:SetGrow(db.Grow or "RIGHT")
 	display:SetSortMethod(db.SortMethod, db.SortDirection)
-	display:SetHideUnimportant(db.Icons.HideUnimportant or false)
-	display:SetStyle({
-		ReverseCooldown = db.Icons.ReverseCooldown,
-		HideSwipe = db.Icons.HideSwipe,
-		HideNumbers = db.Icons.HideNumbers,
-		FontScale = db.Icons.FontScale or 1.0,
-	})
+	local includeSpellIDs, excludeSpellIDs = GetSpellFilterMaps()
+	display:SetAuraFilters(db.Icons.HideUnimportant or false, includeSpellIDs, excludeSpellIDs)
+	display:ApplyConfig(db.Icons.Size or 36, db.Icons.Spacing or 2, BuildStyle())
 end
 
 local function UpdateContainer(container, unit)
@@ -219,7 +284,11 @@ local function EnsureEntry(anchor)
 	if not entry then
 		local container
 		if useAuraContainers then
-			container = AuraContainerDisplay:New(UIParent, unit, db.MaxIcons or 6, db.Icons.Size or 36, db.Icons.Spacing or 2)
+			-- The style rides along at creation: buttons are born styled in initializeFrame, and
+			-- a display created inside an arena can't be restyled until the match ends.
+			container = AuraContainerDisplay:New(
+				UIParent, unit, db.MaxIcons or 6, db.Icons.Size or 36, db.Icons.Spacing or 2, BuildStyle()
+			)
 			container:Hide()
 		else
 			container = CreateContainer()
@@ -240,27 +309,35 @@ local function EnsureEntries()
 end
 
 local function UpdateTestContainer(container)
-	container:ResetAllSlots()
-
 	local now = GetTime()
-	local duration = 16
-	for idx, spellId in ipairs(testSpells) do
-		if idx > container.Count then
+	local used = 0
+
+	for _, spec in ipairs(testSpells) do
+		if used >= container.Count then
 			break
 		end
 
-		local texture = C_Spell.GetSpellTexture(spellId)
+		local texture = C_Spell.GetSpellTexture(spec.Spell)
 
 		if texture then
-			container:SetSlot(idx, {
+			used = used + 1
+			container:SetSlot(used, {
 				Texture = texture,
 				StartTime = now,
-				Duration = duration,
+				Duration = spec.Duration,
 				HideSwipe = db.Icons.HideSwipe,
 				ReverseCooldown = db.Icons.ReverseCooldown,
 				HideNumbers = db.Icons.HideNumbers,
+				-- The extras preview 12.1-only settings; their toggles don't exist on 12.0.
+				ShowMilliseconds = useAuraContainers and db.Icons.ShowMilliseconds or false,
+				ColorCountdown = useAuraContainers and db.Icons.ColorCountdown or false,
+				StackText = (useAuraContainers and db.Icons.ShowStacks and spec.Stacks) or nil,
 			})
 		end
+	end
+
+	for idx = used + 1, container.Count do
+		container:SetSlotUnused(idx)
 	end
 end
 
@@ -515,6 +592,8 @@ mini:WaitForAddonLoad(OnAddonLoaded)
 ---@class Addon
 ---@field Framework MiniFramework
 ---@field WoWEx WoWEx
+---@field SpellNameIndex table<string, string>
+---@field SpellSearch SpellSearch
 ---@field Config Config
 ---@field CustomAnchors table
 ---@field IconSlotContainer IconSlotContainer

@@ -11,7 +11,14 @@ local sortDirections = { "+", "-" }
 local verticalSpacing = mini.VerticalSpacing
 local horizontalSpacing = mini.HorizontalSpacing
 local columns = 4
-local columnWidth = mini:ColumnWidth(columns, 0, 0)
+-- The half-spacing padding keeps the last column off the settings window's right edge.
+local columnWidth = mini:ColumnWidth(columns, horizontalSpacing / 2, 0)
+local SPELL_ICON_SIZE = 18
+local SPELL_ROW_HEIGHT = 26
+local SPELL_COLUMNS = 2
+local SPELL_COLUMN_WIDTH = 290
+local SUGGESTION_ROWS = 8
+local SUGGESTION_ROW_HEIGHT = 24
 ---@type Db
 local db
 
@@ -26,7 +33,7 @@ local dbDefaults = {
 
 	Anchor = {
 		Offset = {
-			X = 60,
+			X = 0,
 			Y = 0,
 		},
 	},
@@ -42,6 +49,18 @@ local dbDefaults = {
 		HideUnimportant = false,
 		PandemicGlow = false,
 		PandemicDesaturate = false,
+		PandemicBorder = false,
+		PandemicColor = { R = 1, G = 0.6, B = 0.1 },
+		ShowStacks = true,
+		ShowMilliseconds = false,
+		ColorCountdown = false,
+	},
+
+	-- 12.1 only: the legacy path cannot filter by spell id. Mode INCLUDE shows only the listed
+	-- spells, EXCLUDE hides them; Spells is the raw id text the user typed.
+	SpellFilter = {
+		Mode = "OFF",
+		Spells = "",
 	},
 
 	MaxIcons = 6,
@@ -151,6 +170,585 @@ local function ApplySettings()
 	addon:Refresh()
 end
 
+local function InitPositionPanel(category)
+	local panel = CreateFrame("Frame")
+	panel.name = "Position & Sort"
+
+	mini:AddSubCategory(category, panel)
+
+	local header = mini:PanelHeader({
+		Parent = panel,
+		Title = "Position & Sort",
+		Lines = {
+			"Where the icon row sits relative to each arena frame, and the order icons appear in.",
+		},
+	})
+
+	local growLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	growLbl:SetText("Grow")
+
+	local growDdl, modernDdl = mini:Dropdown({
+		Parent = panel,
+		Items = growOptions,
+		Width = columnWidth,
+		GetValue = function()
+			return db.Grow
+		end,
+		SetValue = function(value)
+			if db.Grow ~= value then
+				db.Grow = value
+				ApplySettings()
+			end
+		end,
+	})
+	growDdl:SetWidth(dropdownWidth)
+	growLbl:SetPoint("TOPLEFT", header.Anchor, "BOTTOMLEFT", 0, -verticalSpacing)
+	growDdl:SetPoint("TOPLEFT", growLbl, "BOTTOMLEFT", modernDdl and 0 or -16, -8)
+
+	local offsetX = mini:Slider({
+		Parent = panel,
+		Min = -250,
+		Max = 250,
+		Step = 1,
+		Width = columnWidth * 2 - horizontalSpacing,
+		LabelText = "Offset X",
+		GetValue = function()
+			return db.Anchor.Offset.X
+		end,
+		SetValue = function(v)
+			db.Anchor.Offset.X = mini:ClampInt(v, -250, 250, dbDefaults.Anchor.Offset.X)
+			ApplySettings()
+		end,
+	})
+	offsetX.Slider:SetPoint("TOPLEFT", growDdl, "BOTTOMLEFT", modernDdl and 0 or 16, -verticalSpacing * 3)
+
+	local offsetY = mini:Slider({
+		Parent = panel,
+		Min = -250,
+		Max = 250,
+		Step = 1,
+		Width = columnWidth * 2 - horizontalSpacing,
+		LabelText = "Offset Y",
+		GetValue = function()
+			return db.Anchor.Offset.Y
+		end,
+		SetValue = function(v)
+			db.Anchor.Offset.Y = mini:ClampInt(v, -250, 250, dbDefaults.Anchor.Offset.Y)
+			ApplySettings()
+		end,
+	})
+	offsetY.Slider:SetPoint("LEFT", offsetX.Slider, "RIGHT", horizontalSpacing, 0)
+
+	local sortDivider = mini:Divider({ Parent = panel, Text = "Sort" })
+	sortDivider:SetPoint("LEFT", panel, "LEFT")
+	sortDivider:SetPoint("RIGHT", panel, "RIGHT", -horizontalSpacing, 0)
+	sortDivider:SetPoint("TOP", offsetX.Slider, "BOTTOM", 0, -verticalSpacing)
+
+	local sortMethodLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	sortMethodLbl:SetText("Sort Method")
+
+	local sortMethodDdl
+	sortMethodDdl, modernDdl = mini:Dropdown({
+		Parent = panel,
+		Items = sortMethods,
+		Width = columnWidth,
+		GetValue = function()
+			return db.SortMethod
+		end,
+		SetValue = function(value)
+			if db.SortMethod ~= value then
+				db.SortMethod = value
+				ApplySettings()
+			end
+		end,
+	})
+	sortMethodDdl:SetWidth(dropdownWidth)
+	sortMethodLbl:SetPoint("TOPLEFT", sortDivider, "BOTTOMLEFT", 0, -verticalSpacing)
+	sortMethodDdl:SetPoint("TOPLEFT", sortMethodLbl, "BOTTOMLEFT", modernDdl and 0 or -16, -8)
+
+	local sortDirLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	sortDirLbl:SetText("Sort Direction")
+
+	local sortDirDdl = mini:Dropdown({
+		Parent = panel,
+		Items = sortDirections,
+		Width = columnWidth,
+		GetText = function(v)
+			return v == "+" and "Ascending (+)" or "Descending (-)"
+		end,
+		GetValue = function()
+			return db.SortDirection
+		end,
+		SetValue = function(value)
+			if db.SortDirection ~= value then
+				db.SortDirection = value
+				ApplySettings()
+			end
+		end,
+	})
+	sortDirDdl:SetWidth(dropdownWidth)
+	sortDirDdl:SetPoint("LEFT", sortMethodDdl, "RIGHT", horizontalSpacing, 0)
+	sortDirLbl:SetPoint("BOTTOMLEFT", sortDirDdl, "TOPLEFT", 0, 8)
+
+	panel:SetScript("OnShow", function()
+		panel:MiniRefresh()
+	end)
+end
+
+---A spell icon with the standard tooltip; set .SpellId and .Icon's texture per use.
+local function CreateSpellIcon(parent)
+	local button = CreateFrame("Button", nil, parent)
+	button:SetSize(SPELL_ICON_SIZE, SPELL_ICON_SIZE)
+
+	button.Icon = button:CreateTexture(nil, "ARTWORK")
+	button.Icon:SetAllPoints()
+	button.Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+	button:SetScript("OnEnter", function(buttonSelf)
+		if not buttonSelf.SpellId then
+			return
+		end
+
+		GameTooltip:SetOwner(buttonSelf, "ANCHOR_RIGHT")
+		GameTooltip:SetSpellByID(buttonSelf.SpellId)
+		GameTooltip:Show()
+	end)
+	button:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+
+	return button
+end
+
+---A small remove cross with the standard tooltip; the caller positions it.
+local function CreateRemoveButton(parent, onClick)
+	local button = CreateFrame("Button", nil, parent)
+	button:SetSize(SPELL_ICON_SIZE, SPELL_ICON_SIZE)
+
+	local icon = button:CreateTexture(nil, "ARTWORK")
+	icon:SetAllPoints()
+	icon:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+
+	local highlight = button:CreateTexture(nil, "HIGHLIGHT")
+	highlight:SetAllPoints()
+	highlight:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
+
+	button:SetScript("OnEnter", function(buttonSelf)
+		GameTooltip:SetOwner(buttonSelf, "ANCHOR_RIGHT")
+		GameTooltip:SetText(REMOVE or "Remove", 1, 0.82, 0)
+		GameTooltip:Show()
+	end)
+	button:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+	button:SetScript("OnClick", onClick)
+
+	return button
+end
+
+local function SpellLabel(spellId)
+	return ("%s |cff888888(%d)|r"):format(C_Spell.GetSpellName(spellId) or "?", spellId)
+end
+
+---An edit box that suggests spells as you type; picking one (click or Enter) calls onAccept
+---with its id. Ported from MiniAuras' spell picker.
+local function CreateSpellPicker(panel, onAccept)
+	local spellSearch = addon.SpellSearch
+	local box = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+	mini:FlattenEditBox(box)
+	box:SetSize(dropdownWidth, 22)
+	box:SetAutoFocus(false)
+	local suggestionRows = {}
+
+	-- Edit boxes have no placeholder of their own, so it is a font string behind the caret that
+	-- goes away as soon as there is anything to read.
+	local placeholder = box:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+	placeholder:SetPoint("LEFT", box, "LEFT", 2, 0)
+	placeholder:SetText("Spell ID / name")
+
+	local function UpdatePlaceholder()
+		placeholder:SetShown(box:GetText() == "" and not box:HasFocus())
+	end
+
+	local popup = CreateFrame("Frame", nil, panel, "BackdropTemplate")
+	popup:SetPoint("TOPLEFT", box, "BOTTOMLEFT", -6, -2)
+	popup:SetWidth(280)
+	popup:SetFrameStrata("DIALOG")
+	-- Above every row it drops over, not just its immediate parent.
+	popup:SetFrameLevel(panel:GetFrameLevel() + 20)
+	popup:SetBackdrop({
+		bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+		tile = true, tileSize = 16, edgeSize = 12,
+		insets = { left = 3, right = 3, top = 3, bottom = 3 },
+	})
+	popup:SetBackdropColor(0, 0, 0, 0.95)
+	popup:Hide()
+	-- Clicks on the padding close it; the focus handler below has already fired by then.
+	popup:EnableMouse(true)
+	popup:SetScript("OnMouseDown", function(popupSelf)
+		popupSelf:Hide()
+	end)
+
+	-- Which suggestion the arrow keys have walked to, zero for none. Enter takes this one when
+	-- there is one, and the best match otherwise.
+	local highlighted = 0
+	local shownRows = 0
+
+	local function ApplyHighlight()
+		for index = 1, shownRows do
+			suggestionRows[index].Selected:SetShown(index == highlighted)
+		end
+	end
+
+	local function HidePopup()
+		popup:Hide()
+		highlighted = 0
+	end
+
+	---@param step number -1 for up, 1 for down.
+	local function MoveHighlight(step)
+		if shownRows == 0 then
+			return
+		end
+
+		if highlighted == 0 then
+			-- Entering the list from the box: down starts at the top, up at the bottom.
+			highlighted = step > 0 and 1 or shownRows
+		else
+			highlighted = (highlighted + step - 1) % shownRows + 1
+		end
+
+		ApplyHighlight()
+	end
+
+	local function ShowSuggestions()
+		local results = spellSearch:Search(box:GetText(), SUGGESTION_ROWS)
+		local y = -6
+
+		for index, entry in ipairs(results) do
+			local row = suggestionRows[index]
+
+			if not row then
+				row = CreateFrame("Button", nil, popup)
+				row:SetSize(268, SUGGESTION_ROW_HEIGHT)
+				row.Icon = CreateSpellIcon(row)
+				row.Icon:SetPoint("LEFT", row, "LEFT", 6, 0)
+				row.Text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+				row.Text:SetPoint("LEFT", row.Icon, "RIGHT", 6, 0)
+
+				local highlight = row:CreateTexture(nil, "HIGHLIGHT")
+				highlight:SetAllPoints()
+				highlight:SetColorTexture(1, 1, 1, 0.08)
+
+				-- Separate from the hover highlight, which the mouse owns.
+				row.Selected = row:CreateTexture(nil, "ARTWORK")
+				row.Selected:SetAllPoints()
+				row.Selected:SetColorTexture(1, 0.82, 0, 0.2)
+				row.Selected:Hide()
+
+				suggestionRows[index] = row
+			end
+
+			row.SpellId = entry.Id
+			row.Icon.SpellId = entry.Id
+			row.Icon.Icon:SetTexture(C_Spell.GetSpellTexture(entry.Id))
+			row.Text:SetText(SpellLabel(entry.Id))
+			row:SetPoint("TOPLEFT", popup, "TOPLEFT", 0, y)
+			row:SetScript("OnClick", function()
+				box:SetText("")
+				box:ClearFocus()
+				HidePopup()
+				onAccept(entry.Id)
+			end)
+			row:Show()
+
+			y = y - SUGGESTION_ROW_HEIGHT
+		end
+
+		for index = #results + 1, #suggestionRows do
+			suggestionRows[index]:Hide()
+		end
+
+		shownRows = #results
+
+		if shownRows == 0 then
+			HidePopup()
+			return
+		end
+
+		-- A new query invalidates wherever the arrows had walked to.
+		highlighted = 0
+		ApplyHighlight()
+
+		popup:SetHeight(-y + 6)
+		popup:Show()
+	end
+
+	box:SetScript("OnTextChanged", function(_, userInput)
+		-- Fires for SetText as well as typing, so every path that clears the box lands here.
+		UpdatePlaceholder()
+
+		if userInput then
+			ShowSuggestions()
+		end
+	end)
+
+	box:SetScript("OnEditFocusGained", UpdatePlaceholder)
+
+	-- Up and down walk the suggestions. Left and right are the caret's, so they fall through.
+	box:SetScript("OnArrowPressed", function(_, key)
+		if key == "DOWN" then
+			MoveHighlight(1)
+		elseif key == "UP" then
+			MoveHighlight(-1)
+		end
+	end)
+
+	box:SetScript("OnEnterPressed", function(boxSelf)
+		-- Whatever the arrows landed on, else the best suggestion, which for a fully typed id
+		-- is that id.
+		local row = highlighted > 0 and suggestionRows[highlighted]
+		local spellId = row and row.SpellId
+
+		if not spellId then
+			local results = spellSearch:Search(boxSelf:GetText(), 1)
+
+			spellId = results[1] and results[1].Id
+		end
+
+		boxSelf:SetText("")
+		boxSelf:ClearFocus()
+		HidePopup()
+
+		if spellId then
+			onAccept(spellId)
+		end
+	end)
+
+	box:SetScript("OnEscapePressed", function(boxSelf)
+		boxSelf:SetText("")
+		boxSelf:ClearFocus()
+		HidePopup()
+	end)
+
+	box:SetScript("OnEditFocusLost", function()
+		UpdatePlaceholder()
+
+		-- A click pulls focus on mouse DOWN, before the row sees it on mouse up. Hiding here
+		-- would take the row out from under the cursor. The row closes the popup itself.
+		if popup:IsMouseOver() then
+			return
+		end
+
+		HidePopup()
+	end)
+
+	UpdatePlaceholder()
+
+	return box
+end
+
+-- 12.1 only, and not just because the option is unwired on 12.0 - the legacy path reads auras
+-- through the unit APIs, where the spell id comes back as a secret value that can never be
+-- matched against a tracked id. Only the AuraContainer's spell-id candidate filters can do
+-- this, because the engine does the matching itself.
+local function InitSpellFilterPanel(category)
+	local spellSearch = addon.SpellSearch
+	local panel = CreateFrame("Frame")
+	panel.name = "Spell Filter"
+
+	mini:AddSubCategory(category, panel)
+
+	local header = mini:PanelHeader({
+		Parent = panel,
+		Title = "Spell Filter",
+		Lines = {
+			"Limits which of your debuffs are shown.",
+			"Only Listed Spells shows just the spells below; All But Listed Spells hides them.",
+			"Adding a spell also adds every spell ID that applies an aura under the same name.",
+		},
+	})
+
+	---The stored filter as an ordered id list plus a lookup set.
+	local function GetFilterIds()
+		local ids, seen = {}, {}
+
+		for id in (db.SpellFilter.Spells or ""):gmatch("%d+") do
+			local spellId = tonumber(id)
+
+			if spellId and spellId > 0 and not seen[spellId] then
+				seen[spellId] = true
+				ids[#ids + 1] = spellId
+			end
+		end
+
+		return ids, seen
+	end
+
+	local function StoreFilterIds(ids)
+		db.SpellFilter.Spells = table.concat(ids, ", ")
+		ApplySettings()
+	end
+
+	---The stored ids grouped one row per spell name (a name's id variants collapse into it),
+	---sorted by name so the list reads the same every time.
+	local function GroupedFilterSpells()
+		local ids = GetFilterIds()
+		local groups, byName = {}, {}
+
+		for _, spellId in ipairs(ids) do
+			local name = C_Spell.GetSpellName(spellId) or tostring(spellId)
+			local group = byName[name]
+
+			if not group then
+				group = { Name = name, Ids = {} }
+				byName[name] = group
+				groups[#groups + 1] = group
+			end
+
+			group.Ids[#group.Ids + 1] = spellId
+		end
+
+		table.sort(groups, function(a, b)
+			return a.Name:lower() < b.Name:lower()
+		end)
+
+		return groups
+	end
+
+	local filterModeLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	filterModeLbl:SetText("Mode")
+
+	local filterModeText = {
+		OFF = "Off",
+		INCLUDE = "Only Listed Spells",
+		EXCLUDE = "All But Listed Spells",
+	}
+
+	local filterModeDdl, modernDdl = mini:Dropdown({
+		Parent = panel,
+		Items = { "OFF", "INCLUDE", "EXCLUDE" },
+		Width = columnWidth,
+		GetText = function(v)
+			return filterModeText[v] or v
+		end,
+		GetValue = function()
+			return db.SpellFilter.Mode
+		end,
+		SetValue = function(value)
+			if db.SpellFilter.Mode ~= value then
+				db.SpellFilter.Mode = value
+				ApplySettings()
+			end
+		end,
+	})
+	filterModeDdl:SetWidth(dropdownWidth)
+	filterModeLbl:SetPoint("TOPLEFT", header.Anchor, "BOTTOMLEFT", 0, -verticalSpacing)
+	filterModeDdl:SetPoint("TOPLEFT", filterModeLbl, "BOTTOMLEFT", modernDdl and 0 or -16, -8)
+
+	local spellRows = {}
+	local Populate
+
+	local function AddSpell(spellId)
+		local ids, seen = GetFilterIds()
+		local added = false
+
+		-- The picker offers one row per name; track every id variant behind it, because the id
+		-- the game applies is often not the one the player looked up.
+		for _, id in ipairs(spellSearch:GetVariants(spellId)) do
+			if not seen[id] then
+				seen[id] = true
+				ids[#ids + 1] = id
+				added = true
+			end
+		end
+
+		if added then
+			StoreFilterIds(ids)
+			Populate()
+		end
+	end
+
+	local function RemoveSpells(removeIds)
+		local remove = {}
+
+		for _, id in ipairs(removeIds) do
+			remove[id] = true
+		end
+
+		local ids = {}
+
+		for _, id in ipairs(GetFilterIds()) do
+			if not remove[id] then
+				ids[#ids + 1] = id
+			end
+		end
+
+		StoreFilterIds(ids)
+		Populate()
+	end
+
+	local pickerLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	pickerLbl:SetText("Add Spell")
+
+	local picker = CreateSpellPicker(panel, AddSpell)
+	pickerLbl:SetPoint("TOPLEFT", filterModeDdl, "BOTTOMLEFT", modernDdl and 0 or 16, -verticalSpacing)
+	picker:SetPoint("TOPLEFT", pickerLbl, "BOTTOMLEFT", 6, -8)
+
+	local list = CreateFrame("Frame", nil, panel)
+	list:SetPoint("TOPLEFT", picker, "BOTTOMLEFT", -6, -verticalSpacing)
+	list:SetSize(1, 1)
+
+	function Populate()
+		local groups = GroupedFilterSpells()
+
+		for index, group in ipairs(groups) do
+			local row = spellRows[index]
+
+			if not row then
+				row = CreateFrame("Frame", nil, list)
+				row:SetSize(SPELL_COLUMN_WIDTH - horizontalSpacing, SPELL_ROW_HEIGHT)
+				row.Icon = CreateSpellIcon(row)
+				row.Icon:SetPoint("LEFT", row, "LEFT", 0, 0)
+				row.Text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+				row.Text:SetPoint("LEFT", row.Icon, "RIGHT", 6, 0)
+				row.Text:SetPoint("RIGHT", row, "RIGHT", -SPELL_ICON_SIZE - 6, 0)
+				row.Text:SetJustifyH("LEFT")
+				row.Text:SetWordWrap(false)
+				row.Remove = CreateRemoveButton(row, function()
+					RemoveSpells(row.RemoveIds)
+				end)
+				row.Remove:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+				spellRows[index] = row
+			end
+
+			local spellId = group.Ids[1]
+			row.RemoveIds = group.Ids
+			row.Icon.SpellId = spellId
+			row.Icon.Icon:SetTexture(C_Spell.GetSpellTexture(spellId))
+			row.Text:SetText(SpellLabel(spellId))
+			row:SetPoint(
+				"TOPLEFT",
+				list,
+				"TOPLEFT",
+				((index - 1) % SPELL_COLUMNS) * SPELL_COLUMN_WIDTH,
+				-math.floor((index - 1) / SPELL_COLUMNS) * SPELL_ROW_HEIGHT
+			)
+			row:Show()
+		end
+
+		for index = #groups + 1, #spellRows do
+			spellRows[index]:Hide()
+		end
+	end
+
+	panel:SetScript("OnShow", function()
+		panel:MiniRefresh()
+		Populate()
+	end)
+end
+
 function M:Init()
 	db = GetAndUpgradeDb()
 
@@ -165,10 +763,7 @@ function M:Init()
 
 	local header = mini:PanelHeader({
 		Parent = panel,
-		Lines = useAuraContainers and {
-			"Shows your debuffs on arena frames.",
-			"Note: Blizzard's 12.1 patch removed addon access to aura information, so the pandemic glow/desaturate options are no longer possible and have been removed.",
-		} or {
+		Lines = {
 			"Shows your debuffs on arena frames.",
 		},
 		Gap = 6,
@@ -230,12 +825,90 @@ function M:Init()
 	})
 	hideUnimportant:SetPoint("TOPLEFT", header.Anchor, "BOTTOMLEFT", columnWidth * 3 - 4, -verticalSpacing)
 
-	-- TEMPORARY dual path: pandemic visuals need per-aura remaining duration, which 12.1 no
-	-- longer exposes to addons; the sliders anchor straight to the first checkbox row there.
-	-- NOTE: 12.1.5 adds engine-side pandemic glow support - restore these options through that
-	-- API when it ships.
-	local sliderAnchor = reverseSwipe
-	if not useAuraContainers then
+	-- TEMPORARY dual path: the legacy pandemic visuals need per-aura remaining duration, which
+	-- 12.1 no longer exposes to addons; stacks, the countdown text upgrades and the pandemic
+	-- border are engine-driven and only exist there.
+	local sliderAnchor
+	if useAuraContainers then
+		local showStacks = mini:Checkbox({
+			Parent = panel,
+			LabelText = "Show Stacks",
+			Tooltip = "Shows the stack count on debuffs with more than one application.",
+			GetValue = function()
+				return db.Icons.ShowStacks
+			end,
+			SetValue = function(v)
+				db.Icons.ShowStacks = v
+				ApplySettings()
+			end,
+		})
+		showStacks:SetPoint("TOPLEFT", reverseSwipe, "BOTTOMLEFT", 0, -verticalSpacing)
+
+		local showMilliseconds = mini:Checkbox({
+			Parent = panel,
+			LabelText = "Show Milliseconds",
+			Tooltip = "Shows tenths of a second on countdowns under 5 seconds, e.g. 4.3.",
+			GetValue = function()
+				return db.Icons.ShowMilliseconds
+			end,
+			SetValue = function(v)
+				db.Icons.ShowMilliseconds = v
+				ApplySettings()
+			end,
+		})
+		showMilliseconds:SetPoint("TOPLEFT", hideSwipe, "BOTTOMLEFT", 0, -verticalSpacing)
+
+		local colorCountdown = mini:Checkbox({
+			Parent = panel,
+			LabelText = "Color Countdown",
+			Tooltip = "Colors the countdown text by time remaining: red under 5 seconds, yellow under a minute.",
+			GetValue = function()
+				return db.Icons.ColorCountdown
+			end,
+			SetValue = function(v)
+				db.Icons.ColorCountdown = v
+				ApplySettings()
+			end,
+		})
+		colorCountdown:SetPoint("TOPLEFT", hideNumbers, "BOTTOMLEFT", 0, -verticalSpacing)
+
+		sliderAnchor = showStacks
+
+		-- Pandemic regions arrived after 12.1.0 (feature-detected), so the toggle and its
+		-- colour only show on clients that can actually drive the ring.
+		if addon.WoWEx:HasPandemicRegions() then
+			local pandemicBorder = mini:Checkbox({
+				Parent = panel,
+				LabelText = "Pandemic Border",
+				Tooltip = "Shows a border while a debuff is in its refresh window (the last stretch where re-casting carries the remaining time over).",
+				GetValue = function()
+					return db.Icons.PandemicBorder
+				end,
+				SetValue = function(v)
+					db.Icons.PandemicBorder = v
+					ApplySettings()
+				end,
+			})
+			pandemicBorder:SetPoint("TOPLEFT", hideUnimportant, "BOTTOMLEFT", 0, -verticalSpacing)
+
+			local pandemicColor = mini:ColorSwatch({
+				Parent = panel,
+				LabelText = "Pandemic Border Color",
+				Tooltip = "Click to change the pandemic border color.",
+				HasOpacity = false,
+				GetValue = function()
+					local color = db.Icons.PandemicColor or {}
+					return color.R or 1, color.G or 0.6, color.B or 0.1, 1
+				end,
+				SetValue = function(r, g, b)
+					db.Icons.PandemicColor = { R = r, G = g, B = b }
+					ApplySettings()
+				end,
+			})
+			pandemicColor:SetPoint("TOPLEFT", showStacks, "BOTTOMLEFT", 0, -verticalSpacing)
+			sliderAnchor = pandemicColor
+		end
+	else
 		local pandemicGlow = mini:Checkbox({
 			Parent = panel,
 			LabelText = "Glow on Pandemic",
@@ -282,7 +955,7 @@ function M:Init()
 			ApplySettings()
 		end,
 	})
-	iconSize.Slider:SetPoint("TOPLEFT", sliderAnchor, "BOTTOMLEFT", 4, -verticalSpacing * 2)
+	iconSize.Slider:SetPoint("TOPLEFT", sliderAnchor, "BOTTOMLEFT", 4, -verticalSpacing * 3)
 
 	local iconSpacing = mini:Slider({
 		Parent = panel,
@@ -335,121 +1008,6 @@ function M:Init()
 	})
 	fontScale.Slider:SetPoint("LEFT", maxIcons.Slider, "RIGHT", horizontalSpacing * 2, 0)
 
-	-- Position
-
-	local posDivider = mini:Divider({ Parent = panel, Text = "Position" })
-	posDivider:SetPoint("LEFT", panel, "LEFT")
-	posDivider:SetPoint("RIGHT", panel, "RIGHT", -horizontalSpacing, 0)
-	posDivider:SetPoint("TOP", maxIcons.Slider, "BOTTOM", 0, -verticalSpacing * 1.5)
-
-	local growLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	growLbl:SetText("Grow")
-
-	local growDdl, modernDdl = mini:Dropdown({
-		Parent = panel,
-		Items = growOptions,
-		Width = columnWidth,
-		GetValue = function()
-			return db.Grow
-		end,
-		SetValue = function(value)
-			if db.Grow ~= value then
-				db.Grow = value
-				ApplySettings()
-			end
-		end,
-	})
-	growDdl:SetWidth(dropdownWidth)
-	growLbl:SetPoint("TOPLEFT", posDivider, "BOTTOMLEFT", 0, -verticalSpacing)
-	growDdl:SetPoint("TOPLEFT", growLbl, "BOTTOMLEFT", modernDdl and 0 or -16, -8)
-
-	local offsetX = mini:Slider({
-		Parent = panel,
-		Min = -250,
-		Max = 250,
-		Step = 1,
-		Width = columnWidth * 2 - horizontalSpacing,
-		LabelText = "Offset X",
-		GetValue = function()
-			return db.Anchor.Offset.X
-		end,
-		SetValue = function(v)
-			db.Anchor.Offset.X = mini:ClampInt(v, -250, 250, dbDefaults.Anchor.Offset.X)
-			ApplySettings()
-		end,
-	})
-	offsetX.Slider:SetPoint("TOPLEFT", growDdl, "BOTTOMLEFT", modernDdl and 0 or 16, -verticalSpacing * 3)
-
-	local offsetY = mini:Slider({
-		Parent = panel,
-		Min = -250,
-		Max = 250,
-		Step = 1,
-		Width = columnWidth * 2 - horizontalSpacing,
-		LabelText = "Offset Y",
-		GetValue = function()
-			return db.Anchor.Offset.Y
-		end,
-		SetValue = function(v)
-			db.Anchor.Offset.Y = mini:ClampInt(v, -250, 250, dbDefaults.Anchor.Offset.Y)
-			ApplySettings()
-		end,
-	})
-	offsetY.Slider:SetPoint("LEFT", offsetX.Slider, "RIGHT", horizontalSpacing, 0)
-
-	-- Sort
-
-	local sortDivider = mini:Divider({ Parent = panel, Text = "Sort" })
-	sortDivider:SetPoint("LEFT", panel, "LEFT")
-	sortDivider:SetPoint("RIGHT", panel, "RIGHT", -horizontalSpacing, 0)
-	sortDivider:SetPoint("TOP", offsetX.Slider, "BOTTOM", 0, -verticalSpacing)
-
-	local sortMethodLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	sortMethodLbl:SetText("Sort Method")
-
-	local sortMethodDdl
-	sortMethodDdl, modernDdl = mini:Dropdown({
-		Parent = panel,
-		Items = sortMethods,
-		Width = columnWidth,
-		GetValue = function()
-			return db.SortMethod
-		end,
-		SetValue = function(value)
-			if db.SortMethod ~= value then
-				db.SortMethod = value
-				ApplySettings()
-			end
-		end,
-	})
-	sortMethodDdl:SetWidth(dropdownWidth)
-	sortMethodLbl:SetPoint("TOPLEFT", sortDivider, "BOTTOMLEFT", 0, -verticalSpacing)
-	sortMethodDdl:SetPoint("TOPLEFT", sortMethodLbl, "BOTTOMLEFT", modernDdl and 0 or -16, -8)
-
-	local sortDirLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	sortDirLbl:SetText("Sort Direction")
-
-	local sortDirDdl = mini:Dropdown({
-		Parent = panel,
-		Items = sortDirections,
-		Width = columnWidth,
-		GetText = function(v)
-			return v == "+" and "Ascending (+)" or "Descending (-)"
-		end,
-		GetValue = function()
-			return db.SortDirection
-		end,
-		SetValue = function(value)
-			if db.SortDirection ~= value then
-				db.SortDirection = value
-				ApplySettings()
-			end
-		end,
-	})
-	sortDirDdl:SetWidth(dropdownWidth)
-	sortDirDdl:SetPoint("LEFT", sortMethodDdl, "RIGHT", horizontalSpacing, 0)
-	sortDirLbl:SetPoint("BOTTOMLEFT", sortDirDdl, "TOPLEFT", 0, 8)
-
 	StaticPopupDialogs["MINIAD_CONFIRM"] = {
 		text = "%s",
 		button1 = YES,
@@ -471,7 +1029,7 @@ function M:Init()
 
 	local resetBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
 	resetBtn:SetSize(120, 26)
-	resetBtn:SetPoint("TOPRIGHT", panel, "TOPRIGHT", 0, -verticalSpacing)
+	resetBtn:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -horizontalSpacing, -verticalSpacing)
 	resetBtn:SetText("Reset")
 	resetBtn:SetScript("OnClick", function()
 		if InCombatLockdown() then
@@ -516,5 +1074,9 @@ function M:Init()
 		mini:OpenSettings(category, panel)
 	end
 
+	InitPositionPanel(category)
+	if useAuraContainers then
+		InitSpellFilterPanel(category)
+	end
 	addon.CustomAnchors:Init(category)
 end

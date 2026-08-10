@@ -6,7 +6,11 @@ local groupKey = "debuffs"
 local filter = "HARMFUL|PLAYER"
 local liveDisplays = {}
 local editModePreviewActive = false
-local providerSwitchListener = nil
+local displayEventsFrame = nil
+local pendingRestyleCount = 0
+local restyleTicker = nil
+local pendingBounceCount = 0
+local bounceFlushScheduled = false
 
 -- 12.1 AuraContainer-backed debuff display. Wraps a CreateFrame("AuraContainer") with a single
 -- aura group (the player's harmful auras on the unit) and styles the container-created
@@ -25,14 +29,58 @@ local providerSwitchListener = nil
 -- here runs (CreateFrame("AuraContainer") does not exist there).
 --
 -- The legacy pandemic glow/desaturate options have no 12.1 equivalent (they need per-aura
--- remaining duration), but 12.1.5 adds engine-side pandemic glow support - restore the feature
--- here through that API when it ships.
+-- remaining duration). Clients with pandemic regions (12.1.5+) instead get an engine-driven
+-- refresh-window border, registered per button via AddPandemicRegion.
 
 ---@class AuraContainerDisplay
 local M = {}
 M.__index = M
 
 addon.AuraContainerDisplay = M
+
+-- The style fields StoreStyle copies verbatim from a caller's table. Drives both the compare
+-- and the copy, so a new field lands in both at once.
+local STYLE_FIELDS = {
+	"ReverseCooldown",
+	"HideSwipe",
+	"HideNumbers",
+	"FontScale",
+	"ShowStacks",
+	"ShowMilliseconds",
+	"ColorCountdown",
+	"PandemicBorder",
+}
+
+-- Ring tint for the pandemic (refresh-window) reveal, fixed so the cue reads the same at any
+-- size. IconSlotContainer's test-mode ring must match.
+local PANDEMIC_COLOR = { 1, 0.6, 0.1 }
+
+-- Seconds below which the countdown shows tenths ("4.3") when ShowMilliseconds is on.
+local MILLISECONDS_THRESHOLD = 5
+
+-- How often the deferred restyle retry runs while any display is stale (see RestyleButtons).
+local RESTYLE_RETRY_INTERVAL = 1
+
+local EMPTY_STYLE = {}
+
+-- Colour-by-time stops for the countdown text: {seconds remaining, r, g, b}. The engine
+-- evaluates the curve against the secret remaining time and writes the fontstring's colour
+-- itself; nothing here reads the clock. OmniCC's classic bands (red under 5s, yellow to the
+-- minute, white above) rather than a gradient: each near-coincident stop pair fakes a hard
+-- edge on the linear curve, so the 0.05s blend windows are never visible.
+local COUNTDOWN_COLOR_STOPS = {
+	{ 0, 1, 0.102, 0.102 },
+	{ 5, 1, 0.102, 0.102 },
+	{ 5.05, 1, 1, 0.102 },
+	{ 60, 1, 1, 0.102 },
+	{ 60.05, 1, 1, 1 },
+}
+---@type table?
+local countdownCurve
+-- Countdown formatters keyed by milliseconds threshold (0 = whole seconds only). The engine
+-- keeps each reference, so variants are built once and shared across every bound fontstring.
+---@type table<number, table>
+local countdownFormatters = {}
 
 -- Maps the legacy sort settings onto AuraContainer sort methods: INDEX approximates the old
 -- unsorted/application order via aura instance IDs, TIME sorts purely by expiration.
@@ -52,6 +100,110 @@ local growLayouts = {
 local function NextFrameName(frameType)
 	frameIdCounter = frameIdCounter + 1
 	return addonName .. "_AC_" .. frameType .. "_" .. frameIdCounter
+end
+
+-- Button styling is impossible while auras are secret, which covers combat but also whole
+-- arenas / encounters / M+ runs out of combat. RestyleButtons therefore records that the
+-- buttons are stale and returns. Something has to come back for that later: without it an icon
+-- size change made mid-match would leave the buttons at their old size for the rest of the
+-- session. PLAYER_REGEN_ENABLED covers the common case immediately; the ticker covers the rest
+-- (C_Secrets.ShouldAurasBeSecret has no event) and only runs while something is actually
+-- pending, so an idle UI pays nothing.
+
+local function StopRestyleTicker()
+	if restyleTicker then
+		restyleTicker:Cancel()
+		restyleTicker = nil
+	end
+end
+
+local function FlushPendingRestyles()
+	if pendingRestyleCount == 0 or wowEx:IsAuraStylingRestricted() then
+		return
+	end
+
+	for _, instance in ipairs(liveDisplays) do
+		-- Hidden displays are left stale: nothing they show is on screen, and SetShown retries
+		-- the restyle on the way back in.
+		if instance.RestylePending and instance.DesiredShown then
+			instance:RestyleButtons()
+		end
+	end
+end
+
+local function OnRestyleTick()
+	FlushPendingRestyles()
+
+	if pendingRestyleCount == 0 then
+		StopRestyleTicker()
+	end
+end
+
+---Flags/clears a display's stale-style state, keeping the global pending count (and therefore
+---the retry ticker's lifetime) in sync. Always go through this rather than assigning the field.
+---@param instance AuraContainerDisplay
+---@param pending boolean
+local function SetRestylePending(instance, pending)
+	if instance.RestylePending == pending then
+		return
+	end
+
+	instance.RestylePending = pending
+	pendingRestyleCount = pendingRestyleCount + (pending and 1 or -1)
+
+	if pending then
+		if not restyleTicker then
+			restyleTicker = C_Timer.NewTicker(RESTYLE_RETRY_INTERVAL, OnRestyleTick)
+		end
+	elseif pendingRestyleCount == 0 then
+		StopRestyleTicker()
+	end
+end
+
+-- Changes pushed from addon context (SetUnit, budgets, filters, sort) set the container's dirty
+-- flags but cannot arm the secure-side processor that consumes them, so they sit parked until the
+-- unit's next aura event - a retargeted container keeps showing the old unit's auras, a budget
+-- flip lands late, and UpdateAllAuras is just another mark. Hiding and showing the container is
+-- the one addon-side action that re-arms it: the intrinsic OnShow runs in secure context and
+-- issues a full refresh. The bounce is invisible (no render between the two calls) and coalesced
+-- to one per display per frame, because a configure pass calls several setters in a row. In
+-- combat the flags are left parked instead: aura events are frequent enough there to settle
+-- them, and the pending bounce is flushed on the regen event either way.
+
+local function FlushPendingBounces()
+	bounceFlushScheduled = false
+
+	if pendingBounceCount == 0 or InCombatLockdown() then
+		return
+	end
+
+	pendingBounceCount = 0
+
+	for _, instance in ipairs(liveDisplays) do
+		if instance.BouncePending then
+			instance.BouncePending = false
+			local frame = instance.Frame
+
+			-- A hidden frame needs no bounce: the OnShow on its way back arms the processor.
+			if frame:IsShown() then
+				frame:Hide()
+				frame:Show()
+			end
+		end
+	end
+end
+
+---@param instance AuraContainerDisplay
+local function MarkBouncePending(instance)
+	if not instance.BouncePending then
+		instance.BouncePending = true
+		pendingBounceCount = pendingBounceCount + 1
+	end
+
+	if not bounceFlushScheduled then
+		bounceFlushScheduled = true
+		C_Timer.After(0, FlushPendingBounces)
+	end
 end
 
 -- Edit Mode preview suppression.
@@ -90,18 +242,107 @@ local function OnAuraDataProviderSwitch(useRealDataProvider)
 	end
 end
 
----Starts listening for the Edit Mode data provider switch. Called from New rather than at load,
----because the event only exists on clients that have the AuraContainer system.
-local function EnsureProviderSwitchListener()
-	if providerSwitchListener then
+---Starts listening for the Edit Mode data provider switch and for combat ending (the most
+---common moment the button restriction lifts). Called from New rather than at load, because
+---AURA_DATA_PROVIDER_SWITCH only exists on clients that have the AuraContainer system.
+local function EnsureDisplayEvents()
+	if displayEventsFrame then
 		return
 	end
 
-	providerSwitchListener = CreateFrame("Frame")
-	providerSwitchListener:RegisterEvent("AURA_DATA_PROVIDER_SWITCH")
-	providerSwitchListener:SetScript("OnEvent", function(_, _, useRealDataProvider)
-		OnAuraDataProviderSwitch(useRealDataProvider)
+	displayEventsFrame = CreateFrame("Frame")
+	displayEventsFrame:RegisterEvent("AURA_DATA_PROVIDER_SWITCH")
+	displayEventsFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+	displayEventsFrame:SetScript("OnEvent", function(_, event, useRealDataProvider)
+		if event == "AURA_DATA_PROVIDER_SWITCH" then
+			OnAuraDataProviderSwitch(useRealDataProvider)
+		else
+			FlushPendingRestyles()
+			FlushPendingBounces()
+		end
 	end)
+end
+
+---True when the client supports colour curves and formatters on duration-text bindings. Probes
+---the options processor rather than the curve API alone: builds that predate it accept the
+---options table and silently drop the colour, which would leave the swap-in fontstring plain
+---white.
+---@return boolean
+local function HasCountdownText()
+	return C_AuraContainerUtil ~= nil
+		and C_AuraContainerUtil.ProcessCustomAuraButtonDurationTextOptions ~= nil
+		and C_CurveUtil ~= nil
+		and C_CurveUtil.CreateColorCurve ~= nil
+		and C_StringUtil ~= nil
+		and C_StringUtil.CreateNumericRuleFormatter ~= nil
+		and Enum.DurationTextBindingProperty ~= nil
+		and Enum.NumericRuleFormatRounding ~= nil
+end
+
+---Bare-number remaining time ("45" -> "2m" -> "1h"), matching the cooldown countdown the bound
+---text replaces. A rule formatter because the engine's default renders a unit suffix ("45s")
+---and SecondsFormatter cannot drop it. The promotion thresholds are the game's own (1 + 1.5x
+---the unit), and the quotients round up to match Blizzard's frames (2m32s reads "3m"). A
+---non-zero msThreshold adds a tenths band below it ("4.3"); that breakpoint deliberately
+---carries no min/rounding fields - with them present the engine rendered no fractions at all.
+---@param msThreshold number Seconds below which tenths show; 0 for whole seconds only.
+---@return table
+local function GetCountdownFormatter(msThreshold)
+	local fmt = countdownFormatters[msThreshold]
+	if not fmt then
+		local down = Enum.NumericRuleFormatRounding.Down
+		local up = Enum.NumericRuleFormatRounding.Up
+		fmt = C_StringUtil.CreateNumericRuleFormatter()
+		if msThreshold > 0 then
+			fmt:AddBreakpoint({ threshold = 0, step = 0.1, format = "%.1f" })
+			fmt:AddBreakpoint({ threshold = msThreshold, step = 1, rounding = down, min = 1, format = "%d" })
+		else
+			fmt:AddBreakpoint({ threshold = 0, step = 1, rounding = down, min = 1, format = "%d" })
+		end
+		fmt:AddBreakpoint({ threshold = 91, step = 1, rounding = down, min = 1, format = "%dm",
+			components = { { div = 60, rounding = up } } })
+		fmt:AddBreakpoint({ threshold = 5401, step = 1, rounding = down, min = 1, format = "%dh",
+			components = { { div = 3600, rounding = up } } })
+		countdownFormatters[msThreshold] = fmt
+	end
+
+	return fmt
+end
+
+---The shared colour curve every countdown fontstring binds. Built once; the engine keeps the
+---reference and curves are never mutated after creation.
+---@return table
+local function GetCountdownCurve()
+	if not countdownCurve then
+		local curve = C_CurveUtil.CreateColorCurve()
+		curve:SetType(Enum.LuaCurveType.Linear)
+		-- Highest threshold first: the curve API expects points added in descending x order.
+		for i = #COUNTDOWN_COLOR_STOPS, 1, -1 do
+			local stop = COUNTDOWN_COLOR_STOPS[i]
+			curve:AddPoint(stop[1], CreateColor(stop[2], stop[3], stop[4]))
+		end
+		countdownCurve = curve
+	end
+
+	return countdownCurve
+end
+
+---Binds (or re-binds) the countdown fontstring. The engine retains the button's duration-text
+---binding across calls, so this is how the formatter and colour curve are swapped at restyle
+---time. Named fields, not positional: the options validator walks [textColor][curve] and
+---[textColor][property], and a positional pair errors per button at AddAuraGroup time.
+---@param button table
+---@param durationText table
+---@param msThreshold number Seconds below which tenths show; 0 for whole seconds only.
+---@param colorByTime boolean? Carry the colour-by-time curve; default colouring otherwise.
+local function BindDurationText(button, durationText, msThreshold, colorByTime)
+	button:SetDurationText(durationText, {
+		textFormatter = GetCountdownFormatter(msThreshold),
+		textColor = colorByTime and {
+			curve = GetCountdownCurve(),
+			property = Enum.DurationTextBindingProperty.RemainingDuration,
+		} or nil,
+	})
 end
 
 local function GetCooldownFontString(cd)
@@ -118,36 +359,138 @@ local function GetCooldownFontString(cd)
 	return nil
 end
 
-local function UpdateCooldownFontSize(cd, iconSize, fontScale)
-	local region = GetCooldownFontString(cd)
-	if not region then
-		return
-	end
+local function UpdateFontSize(region, iconSize, coefficient, fontScale)
 	local font, _, flags = region:GetFont()
 	if not font then
 		return
 	end
-	local fontSize = math.max(1, math.floor(iconSize * 0.4 * (fontScale or 1.0)))
+	local fontSize = math.max(1, math.floor(iconSize * coefficient * (fontScale or 1.0)))
 	region:SetFont(font, fontSize, flags)
 end
 
--- Applies the stored style (size, cooldown settings) to one button. Safe only while buttons
--- are not forbidden (initializeFrame or out of combat).
+local function UpdateCooldownFontSize(cd, iconSize, fontScale)
+	local region = GetCooldownFontString(cd)
+	if region then
+		UpdateFontSize(region, iconSize, 0.4, fontScale)
+	end
+end
+
+---Copies a style into the instance's own persistent style table and reports whether any of it
+---actually changed. Callers may hand in a reused table - nothing here retains the argument.
+---PandemicColor is copied component-wise for the same reason: a caller building a fresh colour
+---table per refresh must not read as a change when the components match.
+---@param instance AuraContainerDisplay
+---@param style AuraDisplayStyle
+---@return boolean changed
+local function StoreStyle(instance, style)
+	local stored = instance.Style
+	local color = style.PandemicColor
+	local colorR = color and color[1]
+	local colorG = color and color[2]
+	local colorB = color and color[3]
+	local changed = not stored.Populated
+		or stored.PandemicColorR ~= colorR
+		or stored.PandemicColorG ~= colorG
+		or stored.PandemicColorB ~= colorB
+
+	if not changed then
+		for _, field in ipairs(STYLE_FIELDS) do
+			if stored[field] ~= style[field] then
+				changed = true
+				break
+			end
+		end
+	end
+
+	if not changed then
+		return false
+	end
+
+	for _, field in ipairs(STYLE_FIELDS) do
+		stored[field] = style[field]
+	end
+	stored.PandemicColorR = colorR
+	stored.PandemicColorG = colorG
+	stored.PandemicColorB = colorB
+	stored.Populated = true
+
+	return true
+end
+
+-- Applies the stored style (size, cooldown settings, stacks, countdown text) to one button.
+-- Safe only while buttons are not forbidden (initializeFrame or out of combat).
 ---@param instance AuraContainerDisplay
 ---@param button table
 local function StyleButton(instance, button)
 	local style = instance.Style
-	local cd = instance.ButtonCooldowns[button]
+	local widgets = instance.ButtonWidgets[button]
 
-	if not cd then
+	if not widgets then
 		return
 	end
 
 	button:SetSize(instance.Size, instance.Size)
+
+	local cd = widgets.Cooldown
 	cd:SetReverse(style.ReverseCooldown or false)
 	cd:SetDrawSwipe(not style.HideSwipe)
-	cd:SetHideCountdownNumbers(style.HideNumbers or false)
 	UpdateCooldownFontSize(cd, instance.Size, style.FontScale)
+
+	-- The bound fontstring stands in for the cooldown's own countdown whenever it can do
+	-- something the native text cannot: the colour-by-time curve, sub-second tenths, or both.
+	-- The engine writes the fontstring either way, so the off state is alpha rather than
+	-- unbinding. (The cooldown's SetCountdownMillisecondsThreshold and SetCountdownFormatter
+	-- both no-op for 12.1 duration objects; the binding is the only route to fractions.)
+	local msThreshold = (style.ShowMilliseconds and MILLISECONDS_THRESHOLD) or 0
+	local durationText = widgets.DurationText
+	local colorCountdown = style.ColorCountdown == true and durationText ~= nil
+	local useDurationText = not style.HideNumbers
+		and durationText ~= nil
+		and (colorCountdown or msThreshold > 0)
+	cd:SetHideCountdownNumbers((style.HideNumbers or useDurationText) and true or false)
+	if durationText then
+		-- The formatter and colour curve live inside the binding, so a change re-binds. Only
+		-- on change: each SetDurationText runs the engine's options processing per button.
+		local bindSignature = msThreshold .. (colorCountdown and "|c" or "")
+		if widgets.DurationTextBind ~= bindSignature then
+			widgets.DurationTextBind = bindSignature
+			BindDurationText(button, durationText, msThreshold, colorCountdown)
+		end
+		durationText:SetAlpha(useDurationText and 1 or 0)
+		-- Stand-in for the cooldown's own countdown, so it borrows that fontstring's face and
+		-- size wholesale (UpdateCooldownFontSize above just sized it).
+		local cdText = GetCooldownFontString(cd)
+		local font, fontSize, fontFlags
+		if cdText then
+			font, fontSize, fontFlags = cdText:GetFont()
+		end
+		if font then
+			durationText:SetFont(font, fontSize, fontFlags)
+		else
+			UpdateFontSize(durationText, instance.Size, 0.4, style.FontScale)
+		end
+	end
+
+	-- Alpha rather than Show/Hide, and never unregistered: the engine owns this font string's
+	-- text and shown state, so the only part of it left to us is how visible it is.
+	local stacks = widgets.Stacks
+	if stacks then
+		stacks:SetAlpha(style.ShowStacks and 1 or 0)
+		UpdateFontSize(stacks, instance.Size, 0.35, style.FontScale)
+	end
+
+	-- The engine owns the pandemic holder's visibility (shown only inside the refresh window);
+	-- the toggle is ours and rides the ring's alpha instead.
+	local pandemic = widgets.Pandemic
+	if pandemic then
+		pandemic.Ring:SetAlpha(style.PandemicBorder and 1 or 0)
+		pandemic.Ring:SetVertexColor(
+			style.PandemicColorR or PANDEMIC_COLOR[1],
+			style.PandemicColorG or PANDEMIC_COLOR[2],
+			style.PandemicColorB or PANDEMIC_COLOR[3],
+			1
+		)
+	end
 
 	-- No tooltips or click-to-cancel: the icons sit over arena frames and must not eat clicks.
 	button:EnableMouse(false)
@@ -156,6 +499,10 @@ end
 ---@param instance AuraContainerDisplay
 ---@param button table
 local function InitializeButton(instance, button)
+	-- Composite each button's icon/cooldown/text in a single render pass. Must happen here:
+	-- initializeFrame is the only place AuraButtons are guaranteed not forbidden.
+	button:SetFlattensRenderLayers(true)
+
 	-- Icon on the lowest layer with the swipe above, matching IconSlotContainer's slots.
 	local icon = button:CreateTexture(nil, "BACKGROUND", nil, 1)
 	icon:SetAllPoints(button)
@@ -168,7 +515,65 @@ local function InitializeButton(instance, button)
 	cd:SetSwipeColor(0, 0, 0, 0.8)
 	button:SetDurationCooldown(cd)
 
-	instance.ButtonCooldowns[button] = cd
+	-- Text sits on its own child frame levelled above the cooldown: fontstrings created on the
+	-- button itself are parent regions, which child frames like the swipe always cover. Still a
+	-- descendant of the button, so duration/stack registration stays valid.
+	local textOverlay = CreateFrame("Frame", nil, button)
+	textOverlay:SetAllPoints(button)
+	textOverlay:SetFrameLevel(button:GetFrameLevel() + 5)
+
+	-- Countdown stand-in: a fontstring bound as native duration text, carrying the tenths
+	-- formatter and/or colour curve. Always bound where the client supports it; StyleButton
+	-- swaps between this and the cooldown's own countdown via alpha.
+	local durationText
+	if HasCountdownText() then
+		durationText = textOverlay:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+		durationText:SetPoint("CENTER", button, "CENTER", 0, 0)
+		BindDurationText(button, durationText, 0, false)
+	end
+
+	-- The engine writes the count and decides when it is on screen, both of which are secret. We
+	-- only get to place it and say how big it is, so it is registered once and never taken back.
+	-- Never pass an options table with a formatter here: the engine calls FormatNumber(count) in
+	-- Lua with the secret count, and the throw lands inside the container's dirty-flag
+	-- processing, which stops re-arming and leaves the container frozen for the session.
+	local stacks = textOverlay:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+	stacks:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
+	stacks:SetJustifyH("RIGHT")
+	button:SetApplicationCount(stacks)
+
+	-- Pandemic reveal: the engine computes each aura's refresh window (the tail where re-casting
+	-- carries the remainder over) and drives the registered region's visibility itself - the
+	-- window's bounds are secret, so nothing here may read them. A holder frame is registered
+	-- rather than the ring texture, because registration hands the object's shown state to the
+	-- engine and it must be something this addon never shows or hides; the ring inside stays
+	-- ours, and the toggle rides its alpha (StyleButton). No animation on purpose: a looping
+	-- animation costs CPU every frame across every pre-created button.
+	local pandemic
+	if instance.PandemicRegions and button.AddPandemicRegion then
+		pandemic = CreateFrame("Frame", NextFrameName("Pandemic"), button)
+		pandemic:SetFrameLevel(button:GetFrameLevel() + 6)
+		-- One pixel outside the icon's edge, so the ring reads as a border rather than a cover.
+		pandemic:SetPoint("TOPLEFT", button, "TOPLEFT", -2, 2)
+		pandemic:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 2, -2)
+
+		local ring = pandemic:CreateTexture(nil, "OVERLAY")
+		ring:SetAllPoints(pandemic)
+		ring:SetTexture("Interface\\Buttons\\UI-Debuff-Overlays")
+		ring:SetTexCoord(0.296875, 0.5703125, 0, 0.515625)
+		ring:SetVertexColor(PANDEMIC_COLOR[1], PANDEMIC_COLOR[2], PANDEMIC_COLOR[3], 1)
+		pandemic.Ring = ring
+
+		button:AddPandemicRegion(pandemic)
+	end
+
+	instance.ButtonWidgets[button] = {
+		Cooldown = cd,
+		Stacks = stacks,
+		Pandemic = pandemic,
+		DurationText = durationText,
+		DurationTextBind = durationText and "0" or nil,
+	}
 	instance.Buttons[#instance.Buttons + 1] = button
 
 	StyleButton(instance, button)
@@ -183,20 +588,22 @@ local function ApplyFlowLayout(instance)
 	frame:SetFlowLayoutGrowthDirection(AnchorUtil.FlowDirection[layout.h], AnchorUtil.FlowDirection.Down)
 end
 
----Builds the group layout table. Spacing keys are passed under BOTH the older and newer PTR
----spellings (elementSpacing/lineSpacing was renamed to elementSpacingX/elementSpacingY in a
----later 12.1 build); validators ignore unknown keys, so this works on either build.
+---Fills the instance's own layout table. Spacing keys are passed under BOTH the older and newer
+---PTR spellings (elementSpacing/lineSpacing was renamed to elementSpacingX/elementSpacingY in a
+---later 12.1 build); validators ignore unknown keys, so this works on either build. The table is
+---per-instance and reused rather than rebuilt per call, so the engine may retain the reference.
 ---@param instance AuraContainerDisplay
 ---@return table
 local function BuildGroupLayout(instance)
-	return {
-		elementSpacing = instance.Spacing,
-		lineSpacing = instance.Spacing,
-		elementSpacingX = instance.Spacing,
-		elementSpacingY = instance.Spacing,
-		elementWidth = instance.Size,
-		elementHeight = instance.Size,
-	}
+	local layout = instance.Layout
+	layout.elementSpacing = instance.Spacing
+	layout.lineSpacing = instance.Spacing
+	layout.elementSpacingX = instance.Spacing
+	layout.elementSpacingY = instance.Spacing
+	layout.elementWidth = instance.Size
+	layout.elementHeight = instance.Size
+
+	return layout
 end
 
 ---Creates a new AuraContainer-backed display tracking the player's debuffs on a unit.
@@ -205,28 +612,42 @@ end
 ---@param maxIcons number Icon budget.
 ---@param size number Icon size in pixels.
 ---@param spacing number Spacing between icons.
+---@param style AuraDisplayStyle? Style to build the buttons with. Pass it whenever the display
+---may be created while auras are secret (an arena) - a later SetStyle cannot reach the buttons
+---there, so buttons must be born with the real style.
 ---@return AuraContainerDisplay
-function M:New(parent, unit, maxIcons, size, spacing)
+function M:New(parent, unit, maxIcons, size, spacing, style)
 	local instance = setmetatable({}, M)
 
 	instance.Size = size or 36
 	instance.Spacing = spacing or 2
 	instance.MaxIcons = maxIcons or 6
 	instance.Grow = "RIGHT"
+	-- Owned by the instance and mutated in place by StoreStyle; callers never hand us a table
+	-- we keep.
 	instance.Style = {}
+	instance.Layout = {}
 	instance.Buttons = {}
-	-- button -> Cooldown widget for restyling.
-	instance.ButtonCooldowns = {}
+	-- button -> { Cooldown, Stacks, Pandemic, DurationText } for restyling.
+	instance.ButtonWidgets = {}
 	instance.HideUnimportant = false
 	-- Visibility the addon last asked for; frames are created shown.
 	instance.DesiredShown = true
+	instance.RestylePending = false
+	-- Resolved at creation: regions can only be added to a button in initializeFrame, so a
+	-- display built on a client without them can never grow them later.
+	instance.PandemicRegions = wowEx:HasPandemicRegions()
+
+	-- Seed the style BEFORE any button exists, so initializeFrame styles them correctly first
+	-- time (AddAuraGroup pre-creates buttons, and a restyle is blocked while auras are secret).
+	StoreStyle(instance, style or EMPTY_STYLE)
 
 	local frame = CreateFrame("AuraContainer", NextFrameName("Container"), parent, "CustomAuraContainerTemplate")
 	frame:SetIgnoreParentScale(true)
 	frame:SetIgnoreParentAlpha(true)
 	instance.Frame = frame
 
-	EnsureProviderSwitchListener()
+	EnsureDisplayEvents()
 	liveDisplays[#liveDisplays + 1] = instance
 	ApplyShownState(instance)
 
@@ -244,20 +665,35 @@ function M:New(parent, unit, maxIcons, size, spacing)
 		layout = BuildGroupLayout(instance),
 	})
 
+	-- The frame was shown before its group existed, so the arming OnShow has already fired;
+	-- bounce once so the initial parse doesn't wait for the unit's first aura event.
+	MarkBouncePending(instance)
+
 	return instance
 end
 
 ---@param unit string?
 function M:SetUnit(unit)
-	self.Frame:SetUnit(unit or "none")
+	unit = unit or "none"
+	if self.Frame:GetUnit() == unit then
+		return
+	end
+
+	self.Frame:SetUnit(unit)
+	MarkBouncePending(self)
 end
 
 ---Shows or hides the display. Always use this instead of touching Frame:SetShown directly, so
----the Edit Mode placeholder auras stay suppressed (see EnsureProviderSwitchListener).
+---the Edit Mode placeholder auras stay suppressed (see EnsureDisplayEvents).
 ---@param shown boolean
 function M:SetShown(shown)
 	self.DesiredShown = shown == true
 	ApplyShownState(self)
+
+	-- Coming back into view is a chance to settle a restyle that was skipped while restricted.
+	if self.DesiredShown and self.RestylePending then
+		self:RestyleButtons()
+	end
 end
 
 function M:Show()
@@ -284,29 +720,7 @@ function M:SetMaxIcons(maxIcons)
 
 	self.MaxIcons = maxIcons
 	self.Frame:SetAuraGroupMaxFrameCount(groupKey, maxIcons)
-end
-
----@param newSize number
-function M:SetIconSize(newSize)
-	newSize = tonumber(newSize)
-	if not newSize or newSize <= 0 or self.Size == newSize then
-		return
-	end
-
-	self.Size = newSize
-	self.Frame:SetAuraGroupLayout(groupKey, BuildGroupLayout(self))
-	self:RestyleButtons()
-end
-
----@param newSpacing number
-function M:SetSpacing(newSpacing)
-	newSpacing = tonumber(newSpacing)
-	if not newSpacing or newSpacing < 0 or self.Spacing == newSpacing then
-		return
-	end
-
-	self.Spacing = newSpacing
-	self.Frame:SetAuraGroupLayout(groupKey, BuildGroupLayout(self))
+	MarkBouncePending(self)
 end
 
 ---@param grow string "LEFT"|"RIGHT" (anything else falls back to RIGHT)
@@ -334,51 +748,95 @@ function M:SetSortMethod(method, direction)
 		AuraContainerSortMethod[sortMethodMap[method] or "AuraInstanceIDOnly"],
 		direction == "-" and AuraContainerSortDirection.Reverse or AuraContainerSortDirection.Normal
 	)
+	MarkBouncePending(self)
 end
 
----Shows only debuffs Blizzard flags nameplateShowPersonal when enabled (the 12.1 replacement
----for the legacy per-aura alpha trick - boolean candidate filters are not identity-gated).
----@param hide boolean
-function M:SetHideUnimportant(hide)
-	hide = hide and true or false
-	if self.HideUnimportant == hide then
+---Replaces the group's candidate filters. The spell-id maps only apply to harmful auras on
+---units the player cannot assist (the engine silently skips them otherwise) - which is exactly
+---this display's case, the player's debuffs on arena enemies. Swapping filters at runtime is
+---supported by the engine, so a change re-filters in place. Maps are compared by reference:
+---the caller caches them and only hands over new tables when the configured list changes.
+---@param hideUnimportant boolean Show only debuffs Blizzard flags nameplateShowPersonal (the
+---12.1 replacement for the legacy per-aura alpha trick; not identity-gated).
+---@param includeSpellIDs table? Map keyed by spell id; only listed spells show.
+---@param excludeSpellIDs table? Map keyed by spell id; listed spells are hidden.
+function M:SetAuraFilters(hideUnimportant, includeSpellIDs, excludeSpellIDs)
+	hideUnimportant = hideUnimportant and true or false
+	if self.HideUnimportant == hideUnimportant
+		and self.IncludeSpellIDs == includeSpellIDs
+		and self.ExcludeSpellIDs == excludeSpellIDs then
 		return
 	end
 
-	self.HideUnimportant = hide
-	self.Frame:SetAuraGroupCandidateFilters(groupKey, hide and { nameplateShowPersonal = true } or {})
+	self.HideUnimportant = hideUnimportant
+	self.IncludeSpellIDs = includeSpellIDs
+	self.ExcludeSpellIDs = excludeSpellIDs
+
+	-- A fresh table per change, in case the engine retains the reference.
+	local filters = {
+		includeSpellIDs = includeSpellIDs,
+		excludeSpellIDs = excludeSpellIDs,
+	}
+	if hideUnimportant then
+		filters.nameplateShowPersonal = true
+	end
+	self.Frame:SetAuraGroupCandidateFilters(groupKey, filters)
+	MarkBouncePending(self)
 end
 
----Stores the per-button style and applies it to existing buttons when possible. Skipped
----entirely when nothing changed - this runs on every refresh.
+---Applies size, spacing and style together, restyling the buttons once. Callers changing more
+---than one of them must use this rather than separate setters - several passes over every
+---button per config change is what makes dragging a size slider stutter. Nothing is applied to
+---the buttons while aura styling is restricted; the values are stored and the pending-restyle
+---retry settles them when it lifts.
+---@param size number
+---@param spacing number
 ---@param style AuraDisplayStyle
-function M:SetStyle(style)
-	self.Style = style or {}
+function M:ApplyConfig(size, spacing, style)
+	size = tonumber(size)
+	spacing = tonumber(spacing)
 
-	local signature = table.concat({
-		tostring(self.Style.ReverseCooldown),
-		tostring(self.Style.HideSwipe),
-		tostring(self.Style.HideNumbers),
-		tostring(self.Style.FontScale),
-	}, "|")
-	if signature == self.StyleSignature and not self.RestylePending then
+	local changed = false
+
+	if size and size > 0 and self.Size ~= size then
+		self.Size = size
+		changed = true
+	end
+
+	if spacing and spacing >= 0 and self.Spacing ~= spacing then
+		self.Spacing = spacing
+		changed = true
+	end
+
+	if StoreStyle(self, style or EMPTY_STYLE) then
+		changed = true
+	end
+
+	if not changed and not self.RestylePending then
 		return
 	end
-	self.StyleSignature = signature
 
 	self:RestyleButtons()
 end
 
 ---Re-applies the stored style to all created buttons. Buttons are forbidden while auras are
 ---secret (in combat, but also out-of-combat inside M+/encounters/PvP matches), so this is
----deferred then: the pending flag makes the next SetStyle/RestyleButtons retry even when the
----style itself is unchanged.
+---deferred then: the pending flag makes the next call retry even when the style itself is
+---unchanged, and the retry ticker comes back for displays that would otherwise never be
+---touched again.
 function M:RestyleButtons()
 	if wowEx:IsAuraStylingRestricted() then
-		self.RestylePending = true
+		SetRestylePending(self, true)
 		return
 	end
-	self.RestylePending = false
+
+	SetRestylePending(self, false)
+
+	-- The group layout spaces icons by elementWidth, but the engine only ever positions a
+	-- button - the button's real size comes from StyleButton below. Both therefore have to be
+	-- applied together: pushing the layout through while the restyle is deferred spaces the row
+	-- for the new size with buttons still at the old one.
+	self.Frame:SetAuraGroupLayout(groupKey, BuildGroupLayout(self))
 
 	for _, button in ipairs(self.Buttons) do
 		StyleButton(self, button)
@@ -390,6 +848,14 @@ end
 ---@field HideSwipe boolean?
 ---@field HideNumbers boolean?
 ---@field FontScale number?
+---@field ShowStacks boolean? Show the engine-written application count in the icon's corner.
+---@field ShowMilliseconds boolean? Show tenths of a second on countdowns under 5 seconds.
+---@field ColorCountdown boolean? Colour the countdown text by time remaining.
+---@field PandemicBorder boolean? Reveal the engine-driven refresh-window ring. Inert on
+---clients without pandemic regions.
+---@field PandemicColor number[]? {r, g, b} tint for the ring; unset keeps the built-in amber.
+---Copied component-wise, so callers may pass a fresh table per call.
+---@field Populated boolean?
 
 ---@class AuraContainerDisplay
 ---@field Frame table The AuraContainer frame (anchor/show/hide through this).
@@ -398,7 +864,13 @@ end
 ---@field MaxIcons number
 ---@field Grow string
 ---@field Style AuraDisplayStyle
+---@field Layout table
 ---@field Buttons table[]
----@field ButtonCooldowns table<table, table>
+---@field ButtonWidgets table<table, table>
 ---@field HideUnimportant boolean
+---@field IncludeSpellIDs table?
+---@field ExcludeSpellIDs table?
 ---@field DesiredShown boolean
+---@field RestylePending boolean
+---@field BouncePending boolean?
+---@field PandemicRegions boolean
