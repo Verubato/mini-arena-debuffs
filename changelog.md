@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.0.0
+
+12.1 improvements.
+
 ## 3.1.2
 
 Updated the addon icon to the new shared Mini style.
