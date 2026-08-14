@@ -30,6 +30,9 @@ local testSpells = {
 }
 
 local filter = "HARMFUL|PLAYER"
+-- Masque sub-group both display paths skin through, so a chosen skin follows the icons whichever
+-- one is drawing them.
+local masqueGroup = "MiniArenaDebuffs"
 
 -- Parsed spell filter maps, rebuilt only when the configured text or mode changes. The display
 -- compares the maps by reference, so handing back the same tables makes an unchanged refresh
@@ -133,7 +136,7 @@ local function CreateContainer()
 		db.MaxIcons or 6,
 		db.Icons.Size or 36,
 		db.Icons.Spacing or 2,
-		"MiniArenaDebuffs"
+		masqueGroup
 	)
 	container:Hide()
 	container:SetPandemicGlow(db.Icons.PandemicGlow or false)
@@ -287,7 +290,8 @@ local function EnsureEntry(anchor)
 			-- The style rides along at creation: buttons are born styled in initializeFrame, and
 			-- a display created inside an arena can't be restyled until the match ends.
 			container = AuraContainerDisplay:New(
-				UIParent, unit, db.MaxIcons or 6, db.Icons.Size or 36, db.Icons.Spacing or 2, BuildStyle()
+				UIParent, unit, db.MaxIcons or 6, db.Icons.Size or 36, db.Icons.Spacing or 2, BuildStyle(),
+				masqueGroup
 			)
 			container:Hide()
 		else

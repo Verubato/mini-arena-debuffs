@@ -1,6 +1,7 @@
 ---@type string, Addon
 local addonName, addon = ...
 local wowEx = addon.WoWEx
+local auraMasque = addon.AuraMasque
 local frameIdCounter = 0
 local groupKey = "debuffs"
 local filter = "HARMFUL|PLAYER"
@@ -548,7 +549,8 @@ local function InitializeButton(instance, button)
 	-- rather than the ring texture, because registration hands the object's shown state to the
 	-- engine and it must be something this addon never shows or hides; the ring inside stays
 	-- ours, and the toggle rides its alpha (StyleButton). No animation on purpose: a looping
-	-- animation costs CPU every frame across every pre-created button.
+	-- animation costs CPU every frame across every pre-created button. The holder is built here
+	-- but handed over at the end, after Masque has had the button.
 	local pandemic
 	if instance.PandemicRegions and button.AddPandemicRegion then
 		pandemic = CreateFrame("Frame", NextFrameName("Pandemic"), button)
@@ -563,20 +565,29 @@ local function InitializeButton(instance, button)
 		ring:SetTexCoord(0.296875, 0.5703125, 0, 0.515625)
 		ring:SetVertexColor(PANDEMIC_COLOR[1], PANDEMIC_COLOR[2], PANDEMIC_COLOR[3], 1)
 		pandemic.Ring = ring
-
-		button:AddPandemicRegion(pandemic)
 	end
 
-	instance.ButtonWidgets[button] = {
+	local widgets = {
+		Icon = icon,
 		Cooldown = cd,
 		Stacks = stacks,
 		Pandemic = pandemic,
 		DurationText = durationText,
 		DurationTextBind = durationText and "0" or nil,
 	}
+	instance.ButtonWidgets[button] = widgets
 	instance.Buttons[#instance.Buttons + 1] = button
 
 	StyleButton(instance, button)
+	-- After StyleButton, which is what gives the button the size Masque fits the skin to.
+	auraMasque:RegisterButton(instance, button, widgets)
+
+	-- Handed over only now: the refresh window is secret, and registering a region driven by it
+	-- takes the button's own size with it, which is the one number Masque has to be able to read.
+	-- Building the holder above is free; it is this call that closes the door.
+	if pandemic then
+		button:AddPandemicRegion(pandemic)
+	end
 end
 
 ---@param instance AuraContainerDisplay
@@ -615,8 +626,9 @@ end
 ---@param style AuraDisplayStyle? Style to build the buttons with. Pass it whenever the display
 ---may be created while auras are secret (an arena) - a later SetStyle cannot reach the buttons
 ---there, so buttons must be born with the real style.
+---@param masqueGroup string? Masque sub-group name; omit to skip Masque.
 ---@return AuraContainerDisplay
-function M:New(parent, unit, maxIcons, size, spacing, style)
+function M:New(parent, unit, maxIcons, size, spacing, style, masqueGroup)
 	local instance = setmetatable({}, M)
 
 	instance.Size = size or 36
@@ -628,7 +640,7 @@ function M:New(parent, unit, maxIcons, size, spacing, style)
 	instance.Style = {}
 	instance.Layout = {}
 	instance.Buttons = {}
-	-- button -> { Cooldown, Stacks, Pandemic, DurationText } for restyling.
+	-- button -> { Icon, Cooldown, Stacks, Pandemic, DurationText } for restyling and skinning.
 	instance.ButtonWidgets = {}
 	instance.HideUnimportant = false
 	-- Visibility the addon last asked for; frames are created shown.
@@ -637,6 +649,9 @@ function M:New(parent, unit, maxIcons, size, spacing, style)
 	-- Resolved at creation: regions can only be added to a button in initializeFrame, so a
 	-- display built on a client without them can never grow them later.
 	instance.PandemicRegions = wowEx:HasPandemicRegions()
+	-- Kept past the group itself, which AuraMasque clears when skinning is abandoned.
+	instance.MasqueGroupName = masqueGroup
+	instance.MasqueGroup = auraMasque:ResolveGroup(masqueGroup)
 
 	-- Seed the style BEFORE any button exists, so initializeFrame styles them correctly first
 	-- time (AddAuraGroup pre-creates buttons, and a restyle is blocked while auras are secret).
@@ -841,6 +856,8 @@ function M:RestyleButtons()
 	for _, button in ipairs(self.Buttons) do
 		StyleButton(self, button)
 	end
+
+	auraMasque:ReSkinButtons(self)
 end
 
 ---@class AuraDisplayStyle
@@ -874,3 +891,5 @@ end
 ---@field RestylePending boolean
 ---@field BouncePending boolean?
 ---@field PandemicRegions boolean
+---@field MasqueGroup table?
+---@field MasqueGroupName string?

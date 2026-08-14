@@ -13,6 +13,7 @@ io.write("======================================\n")
 local testFiles = {
 	"tests/TestSmoke.lua",
 	"tests/TestArenaExit.lua",
+	"tests/TestMasque.lua",
 }
 
 local loadErrors = {}

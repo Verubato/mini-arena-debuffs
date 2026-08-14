@@ -16,6 +16,7 @@ Core\WoWEx.lua
 Core\SpellNameIndex.lua
 Core\SpellSearch.lua
 Core\IconSlotContainer.lua
+Core\AuraMasque.lua
 Core\AuraContainerDisplay.lua
 Config\Config.lua
 Config\CustomAnchors.lua

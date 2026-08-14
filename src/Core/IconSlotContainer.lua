@@ -2,7 +2,7 @@
 local addonName, addon = ...
 local Masque = LibStub and LibStub("Masque", true)
 local LCG = LibStub and LibStub("LibCustomGlow-1.0", true)
--- Debounce table keyed by group object: one deferred ReSkin per group per frame
+-- Debounce table keyed by container: one deferred ReSkin per container per frame
 local masqueReskinPending = {}
 
 -- Pandemic step curve: alpha 1 at <=30% remaining, alpha 0 above. Built once if the API exists.
@@ -41,14 +41,25 @@ local function NextFrameName(frameType)
 	return addonName .. "_" .. frameType .. "_" .. frameIdCounter
 end
 
-local function ScheduleMasqueReSkin(group)
-	if not group or masqueReskinPending[group] then
+---Re-fits the skin to this container's current icon size, one pass per container per frame.
+---Scoped to the slots it owns: the group is shared with the 12.1 aura displays, whose buttons
+---belong to the engine and must only be touched from their own restriction-gated restyle.
+---@param instance IconSlotContainer
+local function ScheduleMasqueReSkin(instance)
+	local group = instance.MasqueGroup
+
+	if not group or masqueReskinPending[instance] then
 		return
 	end
-	masqueReskinPending[group] = true
+	masqueReskinPending[instance] = true
 	C_Timer.After(0, function()
-		masqueReskinPending[group] = nil
-		group:ReSkin()
+		masqueReskinPending[instance] = nil
+		for i = 1, instance.Count do
+			local slot = instance.Slots[i]
+			if slot then
+				group:ReSkin(slot.Frame)
+			end
+		end
 	end)
 end
 
@@ -508,7 +519,7 @@ function M:Layout()
 		end
 	end
 
-	ScheduleMasqueReSkin(self.MasqueGroup)
+	ScheduleMasqueReSkin(self)
 end
 
 ---Sets the spacing between slots.
@@ -575,7 +586,7 @@ function M:SetIconSize(newSize)
 		end
 	end
 
-	ScheduleMasqueReSkin(self.MasqueGroup)
+	ScheduleMasqueReSkin(self)
 	self.LayoutSignature = nil
 	self:Layout()
 end
@@ -648,17 +659,33 @@ function M:SetCount(newCount)
 		pandemicOverlay:SetFrameLevel(cd:GetFrameLevel() + 5)
 		pandemicOverlay:SetAlpha(0)
 
+		-- Own child frame levelled above the cooldown, which otherwise covers parent regions.
+		local textOverlay = CreateFrame("Frame", nil, slotFrame)
+		textOverlay:SetAllPoints()
+		textOverlay:SetFrameLevel(cd:GetFrameLevel() + 5)
+
+		-- Built with the slot rather than on first use, so a skin can be handed the count region
+		-- it is going to position: Masque only ever sees a button once, when it is added.
+		local stackText = textOverlay:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+		stackText:SetPoint("BOTTOMRIGHT", slotFrame, "BOTTOMRIGHT", -1, 1)
+		stackText:SetJustifyH("RIGHT")
+		stackText:Hide()
+
+		-- Skinned as an aura, strictly, exactly like the 12.1 aura buttons in the same group: the
+		-- test icons are meant to preview what a real match draws, skin included.
 		if self.MasqueGroup then
 			self.MasqueGroup:AddButton(slotFrame, {
 				Icon = icon,
 				Cooldown = cd,
-			})
+				Count = stackText,
+			}, "Aura", true)
 		end
 
 		self.Slots[i] = {
 			Frame = slotFrame,
 			Icon = icon,
 			Cooldown = cd,
+			StackText = stackText,
 			PandemicOverlay = pandemicOverlay,
 			IsUsed = false,
 		}
@@ -745,19 +772,10 @@ function M:SetSlot(slotIndex, options)
 	end
 
 	if options.StackText then
-		if not slot.StackText then
-			-- Own child frame levelled above the cooldown, which otherwise covers parent regions.
-			local overlay = CreateFrame("Frame", nil, slot.Frame)
-			overlay:SetAllPoints(slot.Frame)
-			overlay:SetFrameLevel(slot.Cooldown:GetFrameLevel() + 5)
-			slot.StackText = overlay:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
-			slot.StackText:SetPoint("BOTTOMRIGHT", slot.Frame, "BOTTOMRIGHT", -1, 1)
-			slot.StackText:SetJustifyH("RIGHT")
-		end
 		UpdateStackFontSize(slot.StackText, self.Size, self.FontScale)
 		slot.StackText:SetText(options.StackText)
 		slot.StackText:Show()
-	elseif slot.StackText then
+	else
 		slot.StackText:Hide()
 	end
 end
