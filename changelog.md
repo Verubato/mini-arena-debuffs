@@ -1,5 +1,18 @@
 # Changelog
 
+## 5.0.0
+
+- Dropped 12.0.7 support; the addon is 12.1 only now.
+- Masque skins now cover the real arena icons, not just the test ones.
+- Added a Zoom Icons option for keeping Blizzard's baked icon border.
+- Merged Pandemic Border into Glow on Pandemic, which now draws a halo on both the real
+  and the test icons, and renamed its colour to Pandemic Color.
+- Replaced LibCustomGlow, which cannot glow a 12.1 aura button at all.
+- Fixed icons staying on screen after leaving an arena.
+- Fixed the countdown keeping its colour after Color Countdown was switched off, and
+  showing numbers on icons with Hide Numbers on.
+- Fixed test icons desaturating during the pandemic window with no option for it.
+
 ## 4.0.0
 
 12.1 improvements.

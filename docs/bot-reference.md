@@ -1,6 +1,6 @@
 # MiniArenaDebuffs - Support Reference
 
-Accurate as of addon version 4.0.0. Everything below is derived from the addon source.
+Accurate as of addon version 5.0.0. Everything below is derived from the addon source.
 
 ## What the addon does
 
@@ -16,7 +16,7 @@ Affliction/Agony/Corruption/Wither, Moonfire/Sunfire, Shadow Priest and Unholy D
 
 | Item | Value |
 |---|---|
-| Addon version | 4.0.0 |
+| Addon version | 5.0.0 |
 | Supported interface version | 120100 (12.1), i.e. WoW Midnight |
 | Saved variables | MiniArenaDebuffsDB (account-wide, shared by all characters) |
 | Optional dependencies | Masque, sArena_Reloaded |
@@ -204,6 +204,8 @@ Only slots 1-3 have override fields.
 
 ## Version history highlights
 
+- 5.0.0: 12.0 support dropped; Masque skinning for the real arena icons; Zoom Icons;
+  pandemic border and glow merged into one glow.
 - 4.0.0: 12.1 improvements.
 - 3.0.0: 12.1 support (AuraContainer path).
 - 2.3.0: pandemic glow and desaturate.
