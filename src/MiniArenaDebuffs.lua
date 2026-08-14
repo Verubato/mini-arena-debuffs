@@ -93,6 +93,7 @@ local function BuildStyle()
 		ColorCountdown = db.Icons.ColorCountdown,
 		PandemicBorder = db.Icons.PandemicBorder,
 		PandemicColor = GetPandemicColor(),
+		Zoom = db.Icons.Zoom ~= false,
 	}
 end
 
@@ -127,6 +128,7 @@ local function UpdateContainerOptions(container)
 	container:SetPandemicBorder(useAuraContainers and db.Icons.PandemicBorder or false)
 	local pandemicColor = GetPandemicColor()
 	container:SetPandemicBorderColor(pandemicColor[1], pandemicColor[2], pandemicColor[3])
+	container:SetIconZoom(db.Icons.Zoom ~= false)
 	ApplyGrowDirection(container)
 end
 
@@ -144,6 +146,7 @@ local function CreateContainer()
 	container:SetPandemicBorder(useAuraContainers and db.Icons.PandemicBorder or false)
 	local pandemicColor = GetPandemicColor()
 	container:SetPandemicBorderColor(pandemicColor[1], pandemicColor[2], pandemicColor[3])
+	container:SetIconZoom(db.Icons.Zoom ~= false)
 	ApplyGrowDirection(container)
 	return container
 end

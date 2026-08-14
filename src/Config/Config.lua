@@ -54,6 +54,8 @@ local dbDefaults = {
 		ShowStacks = true,
 		ShowMilliseconds = false,
 		ColorCountdown = false,
+		-- Crops Blizzard's silver border off every icon. Off gives the stock art back.
+		Zoom = true,
 	},
 
 	-- 12.1 only: the legacy path cannot filter by spell id. Mode INCLUDE shows only the listed
@@ -168,6 +170,25 @@ local function ApplySettings()
 	end
 
 	addon:Refresh()
+end
+
+---The Zoom Icons toggle. Built by the caller so it can be dropped into whichever gap the row of
+---checkboxes has on this client, which differs between the two display paths.
+---@param panel table
+---@return table
+local function BuildZoomIcons(panel)
+	return mini:Checkbox({
+		Parent = panel,
+		LabelText = "Zoom Icons",
+		Tooltip = "Crops the silver border off spell icons. Turn it off to show the icons exactly as Blizzard draws them. A Masque skin brings its own crop and ignores this.",
+		GetValue = function()
+			return db.Icons.Zoom ~= false
+		end,
+		SetValue = function(v)
+			db.Icons.Zoom = v
+			ApplySettings()
+		end,
+	})
 end
 
 local function InitPositionPanel(category)
@@ -876,7 +897,9 @@ function M:Init()
 
 		-- Pandemic regions arrived after 12.1.0 (feature-detected), so the toggle and its
 		-- colour only show on clients that can actually drive the ring.
-		if addon.WoWEx:HasPandemicRegions() then
+		local hasPandemicRegions = addon.WoWEx:HasPandemicRegions()
+
+		if hasPandemicRegions then
 			local pandemicBorder = mini:Checkbox({
 				Parent = panel,
 				LabelText = "Pandemic Border",
@@ -908,6 +931,16 @@ function M:Init()
 			pandemicColor:SetPoint("TOPLEFT", showStacks, "BOTTOMLEFT", 0, -verticalSpacing)
 			sliderAnchor = pandemicColor
 		end
+
+		local zoomIcons = BuildZoomIcons(panel)
+		-- Second column of whichever row is last: beside the pandemic colour where the ring
+		-- exists, otherwise starting a row of its own under the stack toggle.
+		if hasPandemicRegions then
+			zoomIcons:SetPoint("TOPLEFT", showMilliseconds, "BOTTOMLEFT", 0, -verticalSpacing)
+		else
+			zoomIcons:SetPoint("TOPLEFT", showStacks, "BOTTOMLEFT", 0, -verticalSpacing)
+			sliderAnchor = zoomIcons
+		end
 	else
 		local pandemicGlow = mini:Checkbox({
 			Parent = panel,
@@ -936,6 +969,9 @@ function M:Init()
 			end,
 		})
 		pandemicDesaturate:SetPoint("TOPLEFT", hideSwipe, "BOTTOMLEFT", 0, -verticalSpacing)
+
+		local zoomIcons = BuildZoomIcons(panel)
+		zoomIcons:SetPoint("TOPLEFT", hideNumbers, "BOTTOMLEFT", 0, -verticalSpacing)
 
 		sliderAnchor = pandemicGlow
 	end

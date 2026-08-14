@@ -13,6 +13,7 @@ Libs\LibCustomGlow-1.0\LibCustomGlow-1.0.xml
 
 Libs\MiniFramework\MiniFramework.xml
 Core\WoWEx.lua
+Core\IconUtil.lua
 Core\SpellNameIndex.lua
 Core\SpellSearch.lua
 Core\IconSlotContainer.lua

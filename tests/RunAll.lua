@@ -14,6 +14,7 @@ local testFiles = {
 	"tests/TestSmoke.lua",
 	"tests/TestArenaExit.lua",
 	"tests/TestMasque.lua",
+	"tests/TestIconStyle.lua",
 }
 
 local loadErrors = {}

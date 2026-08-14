@@ -2,6 +2,7 @@
 local addonName, addon = ...
 local Masque = LibStub and LibStub("Masque", true)
 local LCG = LibStub and LibStub("LibCustomGlow-1.0", true)
+local iconUtil = addon.IconUtil
 -- Debounce table keyed by container: one deferred ReSkin per container per frame
 local masqueReskinPending = {}
 
@@ -67,6 +68,14 @@ local function GetCooldownFontString(cd)
 	if cd.FontRegion then
 		return cd.FontRegion
 	end
+	-- The scan below picks the first fontstring it finds, which is the countdown on today's
+	-- template but only by luck; clients that expose the getter answer for certain.
+	if cd.GetCountdownFontString then
+		cd.FontRegion = cd:GetCountdownFontString()
+		if cd.FontRegion then
+			return cd.FontRegion
+		end
+	end
 	for i = 1, cd:GetNumRegions() do
 		local region = select(i, cd:GetRegions())
 		if region and region.GetObjectType and region:GetObjectType() == "FontString" then
@@ -118,9 +127,9 @@ local function ApplyCountdownColor(cd, remaining)
 	cd.ColorBand = band
 
 	if band == 1 then
-		text:SetTextColor(1, 0.102, 0.102)
+		text:SetTextColor(1, 0, 0)
 	elseif band == 2 then
-		text:SetTextColor(1, 1, 0.102)
+		text:SetTextColor(1, 0.8, 0)
 	else
 		text:SetTextColor(1, 1, 1)
 	end
@@ -281,18 +290,31 @@ local function UpdatePandemicForSlot(inst, slot, glowEnabled, desaturateEnabled,
 end
 
 local function TickPandemic()
+	local any = false
+
 	for i = 1, #instances do
 		local inst = instances[i]
 		local visible = inst.Frame:IsShown()
 		local glow = inst.PandemicGlow and visible
 		local desat = inst.PandemicDesaturate and visible
 		local border = inst.PandemicBorder and visible
+		if glow or desat or border then
+			any = true
+		end
 		for j = 1, inst.Count do
 			local slot = inst.Slots[j]
 			if slot then
 				UpdatePandemicForSlot(inst, slot, glow, desat, border)
 			end
 		end
+	end
+
+	-- This pass has just cleared whatever the last one drew, so there is nothing left to do until
+	-- a container comes back or a toggle goes on. On 12.1 that is nearly all the time: the engine
+	-- drives the real icons' reveal and only test mode runs through here.
+	if not any and pandemicTicker then
+		pandemicTicker:Cancel()
+		pandemicTicker = nil
 	end
 end
 
@@ -330,12 +352,12 @@ function M:New(parent, count, size, spacing, groupName)
 	instance.PandemicGlow = false
 	instance.PandemicDesaturate = false
 	instance.PandemicBorder = false
+	instance.IconZoom = true
 	instance.MasqueGroup = Masque and groupName and Masque:Group(addonName, groupName) or nil
 
 	instance:SetCount(count)
 
 	instances[#instances + 1] = instance
-	EnsurePandemicTicker()
 
 	return instance
 end
@@ -344,7 +366,14 @@ end
 ---kind of container can use the same call.
 ---@param shown boolean
 function M:SetShown(shown)
-	self.Frame:SetShown(shown == true)
+	shown = shown == true
+	self.Frame:SetShown(shown)
+
+	-- The ticker stops itself once nothing needs it, so coming back into view is one of the
+	-- moments that has to start it again.
+	if shown and (self.PandemicGlow or self.PandemicDesaturate or self.PandemicBorder) then
+		EnsurePandemicTicker()
+	end
 end
 
 function M:Show()
@@ -378,6 +407,8 @@ function M:SetPandemicGlow(enabled)
 				end
 			end
 		end
+	else
+		EnsurePandemicTicker()
 	end
 end
 
@@ -416,6 +447,8 @@ function M:SetPandemicBorder(enabled)
 				slot.PandemicRing:SetAlpha(0)
 			end
 		end
+	else
+		EnsurePandemicTicker()
 	end
 end
 
@@ -433,6 +466,30 @@ function M:SetPandemicDesaturate(enabled)
 			if slot then
 				slot.Icon:SetDesaturation(0)
 			end
+		end
+	else
+		EnsurePandemicTicker()
+	end
+end
+
+---Crops Blizzard's baked border off the slot icons, or puts it back. A Masque skin owns the
+---icon's shape, so a skinned container is left alone: its slots take the skin's crop when they
+---are added to the group, and re-cropping them here would fight it.
+---@param zoomed boolean
+function M:SetIconZoom(zoomed)
+	zoomed = zoomed ~= false
+	if self.IconZoom == zoomed then
+		return
+	end
+	self.IconZoom = zoomed
+	if self.MasqueGroup then
+		return
+	end
+	local left, right, top, bottom = iconUtil:TexCoord(zoomed)
+	for i = 1, #self.Slots do
+		local slot = self.Slots[i]
+		if slot then
+			slot.Icon:SetTexCoord(left, right, top, bottom)
 		end
 	end
 end
@@ -644,12 +701,14 @@ function M:SetCount(newCount)
 
 		local icon = slotFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
 		icon:SetAllPoints()
+		icon:SetTexCoord(iconUtil:TexCoord(self.IconZoom))
 
 		local cd = CreateFrame("Cooldown", NextFrameName("Cooldown"), slotFrame, "CooldownFrameTemplate")
 		cd:SetAllPoints()
 		cd:SetDrawEdge(false)
 		cd:SetDrawBling(false)
 		cd:SetSwipeColor(0, 0, 0, 0.8)
+		iconUtil:SquareSwipe(cd)
 		UpdateCooldownFontSize(cd, self.Size, self.FontScale)
 
 		-- Glow lives on this overlay so we can SetAlpha it with the pandemic curve's
@@ -854,6 +913,7 @@ end
 ---@field PandemicGlow boolean
 ---@field PandemicDesaturate boolean
 ---@field PandemicBorder boolean
+---@field IconZoom boolean
 ---@field SetCount fun(self: IconSlotContainer, count: number)
 ---@field SetSpacing fun(self: IconSlotContainer, spacing: number)
 ---@field SetGrowDown fun(self: IconSlotContainer, enabled: boolean)
@@ -864,6 +924,7 @@ end
 ---@field SetPandemicBorder fun(self: IconSlotContainer, enabled: boolean)
 ---@field SetPandemicBorderColor fun(self: IconSlotContainer, r: number?, g: number?, b: number?)
 ---@field SetPandemicDesaturate fun(self: IconSlotContainer, enabled: boolean)
+---@field SetIconZoom fun(self: IconSlotContainer, zoomed: boolean)
 ---@field SetSlot fun(self: IconSlotContainer, slotIndex: number, options: IconSlotOptions)
 ---@field ClearSlot fun(self: IconSlotContainer, slotIndex: number)
 ---@field SetSlotUnused fun(self: IconSlotContainer, slotIndex: number)
