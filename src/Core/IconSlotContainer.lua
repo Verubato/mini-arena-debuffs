@@ -5,15 +5,9 @@ local iconUtil = addon.IconUtil
 -- Debounce table keyed by container: one deferred ReSkin per container per frame
 local masqueReskinPending = {}
 
--- Pandemic step curve: alpha 1 at <=30% remaining, alpha 0 above. Built once if the API exists.
+-- Where the refresh window starts, as a share of the timer's total. Only ever measured against
+-- the synthetic timers test mode draws; a real aura's remaining time is the engine's to know.
 local pandemicPercentage = 0.3
-local pandemicCurve
-if C_CurveUtil and Enum and Enum.LuaCurveType then
-	pandemicCurve = C_CurveUtil.CreateCurve()
-	pandemicCurve:SetType(Enum.LuaCurveType.Step)
-	pandemicCurve:AddPoint(0, 1)
-	pandemicCurve:AddPoint(pandemicPercentage, 0)
-end
 
 -- All live IconSlotContainer instances; iterated by the shared pandemic ticker.
 local instances = {}
@@ -40,7 +34,7 @@ local function NextFrameName(frameType)
 end
 
 ---Re-fits the skin to this container's current icon size, one pass per container per frame.
----Scoped to the slots it owns: the group is shared with the 12.1 aura displays, whose buttons
+---Scoped to the slots it owns: the group is shared with the aura displays, whose buttons
 ---belong to the engine and must only be touched from their own restriction-gated restyle.
 ---@param instance IconSlotContainer
 local function ScheduleMasqueReSkin(instance)
@@ -107,7 +101,7 @@ local function UpdateStackFontSize(stackText, iconSize, fontScale)
 end
 
 ---Colour bands by remaining seconds; must match COUNTDOWN_COLOR_STOPS in AuraContainerDisplay
----so test icons show exactly what the curve-bound 12.1 aura icons show.
+---so test icons show exactly what the curve-bound aura icons show.
 local function ApplyCountdownColor(cd, remaining)
 	local band = (remaining < 5 and 1) or (remaining < 60 and 2) or 3
 
@@ -184,7 +178,7 @@ end
 
 ---The refresh-window halo, built on first use. Hosted on slot.PandemicOverlay so it draws over
 ---the swipe, and alpha-gated by the pandemic ticker; asset and tint must match the halo in
----AuraContainerDisplay so test mode previews what real 12.1 icons show.
+---AuraContainerDisplay so test mode previews what a real match draws.
 local function EnsurePandemicGlow(inst, slot)
 	local glow = slot.PandemicGlow
 
@@ -199,17 +193,8 @@ local function EnsurePandemicGlow(inst, slot)
 	return glow
 end
 
--- Returns the pandemic alpha for a slot. Pattern from Platynator: the value may be
--- a secret number when DurationObject is in play, so it must only flow into setters
--- (SetAlpha, SetDesaturation) — never into comparisons.
+---How visible the halo should be on a slot: fully inside the refresh window, off outside it.
 local function GetPandemicAlpha(slot)
-	if slot.DurationObject and pandemicCurve and C_CurveUtil and C_CurveUtil.EvaluateColorValueFromBoolean then
-		return C_CurveUtil.EvaluateColorValueFromBoolean(
-			slot.DurationObject:IsZero(),
-			0,
-			slot.DurationObject:EvaluateRemainingPercent(pandemicCurve)
-		)
-	end
 	if slot.StartTime and slot.Duration and slot.Duration > 0 then
 		local remaining = (slot.StartTime + slot.Duration) - GetTime()
 		if remaining > 0 and remaining <= slot.Duration * pandemicPercentage then
@@ -219,25 +204,15 @@ local function GetPandemicAlpha(slot)
 	return 0
 end
 
-local function UpdatePandemicForSlot(inst, slot, glowEnabled, desaturateEnabled)
-	if not slot.IsUsed or slot.IsCC or (not glowEnabled and not desaturateEnabled) then
+local function UpdatePandemicForSlot(inst, slot, glowEnabled)
+	if not slot.IsUsed or not glowEnabled then
 		if slot.PandemicGlow then
 			slot.PandemicGlow:SetAlpha(0)
 		end
-		slot.Icon:SetDesaturation(0)
 		return
 	end
-	local alpha = GetPandemicAlpha(slot)
-	if glowEnabled then
-		EnsurePandemicGlow(inst, slot):SetAlpha(alpha)
-	elseif slot.PandemicGlow then
-		slot.PandemicGlow:SetAlpha(0)
-	end
-	if desaturateEnabled then
-		slot.Icon:SetDesaturation(alpha)
-	else
-		slot.Icon:SetDesaturation(0)
-	end
+
+	EnsurePandemicGlow(inst, slot):SetAlpha(GetPandemicAlpha(slot))
 end
 
 local function TickPandemic()
@@ -247,21 +222,20 @@ local function TickPandemic()
 		local inst = instances[i]
 		local visible = inst.Frame:IsShown()
 		local glow = inst.PandemicGlow and visible
-		local desat = inst.PandemicDesaturate and visible
-		if glow or desat then
+		if glow then
 			any = true
 		end
 		for j = 1, inst.Count do
 			local slot = inst.Slots[j]
 			if slot then
-				UpdatePandemicForSlot(inst, slot, glow, desat)
+				UpdatePandemicForSlot(inst, slot, glow)
 			end
 		end
 	end
 
 	-- This pass has just cleared whatever the last one drew, so there is nothing left to do until
-	-- a container comes back or a toggle goes on. On 12.1 that is nearly all the time: the engine
-	-- drives the real icons' reveal and only test mode runs through here.
+	-- a container comes back or a toggle goes on, which is nearly always: the engine drives the
+	-- real icons' reveal and only test mode runs through here.
 	if not any and pandemicTicker then
 		pandemicTicker:Cancel()
 		pandemicTicker = nil
@@ -300,7 +274,6 @@ function M:New(parent, count, size, spacing, groupName)
 	instance.GrowDown = false
 	instance.InvertLayout = false
 	instance.PandemicGlow = false
-	instance.PandemicDesaturate = false
 	instance.IconZoom = true
 	instance.MasqueGroup = Masque and groupName and Masque:Group(addonName, groupName) or nil
 
@@ -320,7 +293,7 @@ function M:SetShown(shown)
 
 	-- The ticker stops itself once nothing needs it, so coming back into view is one of the
 	-- moments that has to start it again.
-	if shown and (self.PandemicGlow or self.PandemicDesaturate) then
+	if shown and self.PandemicGlow then
 		EnsurePandemicTicker()
 	end
 end
@@ -374,26 +347,6 @@ function M:SetPandemicColor(r, g, b)
 		if slot and slot.PandemicGlow then
 			slot.PandemicGlow:SetVertexColor(r or 1, g or 0.6, b or 0.1, 1)
 		end
-	end
-end
-
----Enables or disables desaturating icons during the pandemic window.
----@param enabled boolean
-function M:SetPandemicDesaturate(enabled)
-	enabled = enabled and true or false
-	if self.PandemicDesaturate == enabled then
-		return
-	end
-	self.PandemicDesaturate = enabled
-	if not enabled then
-		for i = 1, self.Count do
-			local slot = self.Slots[i]
-			if slot then
-				slot.Icon:SetDesaturation(0)
-			end
-		end
-	else
-		EnsurePandemicTicker()
 	end
 end
 
@@ -641,11 +594,11 @@ function M:SetCount(newCount)
 		UpdateCooldownFontSize(cd, self.Size, self.FontScale)
 
 		-- The halo hangs off this overlay rather than the slot, so it draws above the cooldown
-		-- swipe. Its own alpha stays put: the curve's secret-number result rides the texture, and
-		-- dimming the frame would take the icon with it.
+		-- swipe and below the text, matching the aura buttons. Its own alpha stays put: the
+		-- pandemic result rides the texture, and dimming the frame would take the icon with it.
 		local pandemicOverlay = CreateFrame("Frame", NextFrameName("Pandemic"), slotFrame)
 		pandemicOverlay:SetAllPoints()
-		pandemicOverlay:SetFrameLevel(cd:GetFrameLevel() + 5)
+		pandemicOverlay:SetFrameLevel(cd:GetFrameLevel() + 4)
 
 		-- Own child frame levelled above the cooldown, which otherwise covers parent regions.
 		local textOverlay = CreateFrame("Frame", nil, slotFrame)
@@ -659,7 +612,7 @@ function M:SetCount(newCount)
 		stackText:SetJustifyH("RIGHT")
 		stackText:Hide()
 
-		-- Skinned as an aura, strictly, exactly like the 12.1 aura buttons in the same group: the
+		-- Skinned as an aura, strictly, exactly like the aura buttons in the same group: the
 		-- test icons are meant to preview what a real match draws, skin included.
 		if self.MasqueGroup then
 			self.MasqueGroup:AddButton(slotFrame, {
@@ -687,15 +640,12 @@ end
 ---@param options IconSlotOptions
 ---@class IconSlotOptions
 ---@field Texture string Texture path or ID
----@field DurationObject table? From C_UnitAuras.GetAuraDuration — drives the cooldown swipe
----@field StartTime number? Used with Duration for synthetic timers (e.g. test mode)
----@field Duration number? Used with StartTime for synthetic timers (e.g. test mode)
+---@field StartTime number? Used with Duration for the synthetic timers test mode draws
+---@field Duration number? Used with StartTime for the synthetic timers test mode draws
 ---@field HideSwipe boolean? Suppress the cooldown swipe animation
 ---@field ReverseCooldown boolean? Reverse the swipe animation direction
 ---@field HideNumbers boolean? Hide the cooldown countdown numbers
----@field NameplateShowPersonal boolean? When provided, passed to SetAlphaFromBoolean to hide unimportant auras
----@field IsCC boolean? Marks the aura as crowd-control so pandemic-window visuals are skipped
----@field ShowMilliseconds boolean? Show tenths of a second under 5s; clock-driven cooldowns only
+---@field ShowMilliseconds boolean? Show tenths of a second under 5s
 ---@field ColorCountdown boolean? Colour the countdown by remaining time; needs StartTime+Duration
 ---@field StackText string|number? Stack count drawn in the icon's corner; nil hides it
 function M:SetSlot(slotIndex, options)
@@ -716,43 +666,25 @@ function M:SetSlot(slotIndex, options)
 		self:Layout()
 	end
 
-	if options.NameplateShowPersonal ~= nil then
-		slot.Frame:SetAlphaFromBoolean(options.NameplateShowPersonal, 1, 0)
-	else
-		slot.Frame:SetAlpha(1)
-	end
-	slot.IsCC = options.IsCC and true or false
 	slot.Icon:SetTexture(options.Texture)
 	slot.Cooldown:SetReverse(options.ReverseCooldown or false)
 	slot.Cooldown:SetHideCountdownNumbers(options.HideNumbers or false)
 	if slot.Cooldown.SetCountdownMillisecondsThreshold then
-		-- Only affects clock-driven cooldowns (test mode); duration objects ignore it.
 		slot.Cooldown:SetCountdownMillisecondsThreshold(options.ShowMilliseconds and 5 or 0)
 	end
 
-	local drawSwipe = not options.HideSwipe
-	if options.DurationObject then
-		slot.Cooldown:SetCooldownFromDurationObject(options.DurationObject)
-		slot.Cooldown:SetDrawSwipe(drawSwipe)
-		slot.DurationObject = options.DurationObject
-		slot.StartTime = nil
-		slot.Duration = nil
-	elseif options.StartTime and options.Duration then
+	if options.StartTime and options.Duration then
 		slot.Cooldown:SetCooldown(options.StartTime, options.Duration)
-		slot.Cooldown:SetDrawSwipe(drawSwipe)
-		slot.DurationObject = nil
+		slot.Cooldown:SetDrawSwipe(not options.HideSwipe)
 		slot.StartTime = options.StartTime
 		slot.Duration = options.Duration
 	else
 		slot.Cooldown:Clear()
 		slot.Cooldown:SetDrawSwipe(false)
-		slot.DurationObject = nil
 		slot.StartTime = nil
 		slot.Duration = nil
 	end
 
-	-- Colour by remaining time only when the expiry is addon-known (synthetic test timers);
-	-- aura duration objects keep their remaining time secret.
 	if options.ColorCountdown and slot.StartTime and slot.Duration then
 		RegisterCountdownColor(slot.Cooldown, slot.StartTime + slot.Duration)
 	else
@@ -785,14 +717,11 @@ function M:ClearSlot(slotIndex)
 	if slot.StackText then
 		slot.StackText:Hide()
 	end
-	slot.DurationObject = nil
 	slot.StartTime = nil
 	slot.Duration = nil
-	slot.IsCC = false
 	if slot.PandemicGlow then
 		slot.PandemicGlow:SetAlpha(0)
 	end
-	slot.Icon:SetDesaturation(0)
 end
 
 ---Marks a slot as unused and triggers a layout update.
@@ -839,7 +768,6 @@ end
 ---@field GrowDown boolean
 ---@field InvertLayout boolean
 ---@field PandemicGlow boolean
----@field PandemicDesaturate boolean
 ---@field IconZoom boolean
 ---@field SetCount fun(self: IconSlotContainer, count: number)
 ---@field SetSpacing fun(self: IconSlotContainer, spacing: number)
@@ -849,7 +777,6 @@ end
 ---@field SetFontScale fun(self: IconSlotContainer, scale: number)
 ---@field SetPandemicGlow fun(self: IconSlotContainer, enabled: boolean)
 ---@field SetPandemicColor fun(self: IconSlotContainer, r: number?, g: number?, b: number?)
----@field SetPandemicDesaturate fun(self: IconSlotContainer, enabled: boolean)
 ---@field SetIconZoom fun(self: IconSlotContainer, zoomed: boolean)
 ---@field SetSlot fun(self: IconSlotContainer, slotIndex: number, options: IconSlotOptions)
 ---@field ClearSlot fun(self: IconSlotContainer, slotIndex: number)

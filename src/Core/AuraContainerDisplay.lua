@@ -16,7 +16,8 @@ local bounceFlushScheduled = false
 
 -- 12.1 AuraContainer-backed debuff display. Wraps a CreateFrame("AuraContainer") with a single
 -- aura group (the player's harmful auras on the unit) and styles the container-created
--- AuraButtons to match the legacy IconSlotContainer look (icon + cooldown swipe/countdown).
+-- AuraButtons to match the IconSlotContainer look test mode draws (icon + cooldown swipe and
+-- countdown).
 --
 -- Constraints inherited from the AuraContainer system:
 -- - AuraButtons are forbidden while auras are secret (combat/arena): all button styling must
@@ -27,12 +28,8 @@ local bounceFlushScheduled = false
 -- - Nothing may be anchored to the container frame itself, and the container's size can be
 --   secret; callers must not do math with it.
 --
--- This file is only used when addon.WoWEx:UseAuraContainers() is true; on 12.0 clients nothing
--- here runs (CreateFrame("AuraContainer") does not exist there).
---
--- Desaturating on pandemic has no 12.1 equivalent (it needs the per-aura remaining duration).
--- The glow does: clients with pandemic regions (12.1.5+) get an engine-driven refresh-window
--- halo, registered per button via AddPandemicRegion.
+-- Clients with pandemic regions (12.1.5+) also get an engine-driven refresh-window halo,
+-- registered per button via AddPandemicRegion.
 
 ---@class AuraContainerDisplay
 local M = {}
@@ -91,19 +88,20 @@ local plainCountdownCurve
 ---@type table<number, table>
 local countdownFormatters = {}
 
--- Maps the legacy sort settings onto AuraContainer sort methods: INDEX approximates the old
--- unsorted/application order via aura instance IDs, TIME sorts purely by expiration.
+-- Maps the configured sort onto AuraContainer sort methods: INDEX approximates application
+-- order via aura instance IDs, TIME sorts purely by expiration.
 local sortMethodMap = {
 	INDEX = "AuraInstanceIDOnly",
 	TIME = "ExpirationOnly",
 }
 
 -- Grow direction -> flow layout. The first icon always sits nearest the container's anchored
--- edge, matching the legacy InvertLayout behaviour. CENTER is not offered on 12.1 (the
--- container's size can be secret, so a centred row can't be positioned).
+-- edge, matching IconSlotContainer's InvertLayout. CENTER fills the same way as RIGHT: the row
+-- is centred by where the container itself is anchored, not by how the icons flow inside it.
 local growLayouts = {
 	LEFT = { anchorPoint = "RIGHT", h = "Left" },
 	RIGHT = { anchorPoint = "LEFT", h = "Right" },
+	CENTER = { anchorPoint = "LEFT", h = "Right" },
 }
 
 local function NextFrameName(frameType)
@@ -612,7 +610,9 @@ local function InitializeButton(instance, button)
 	local pandemic
 	if instance.PandemicRegions and button.AddPandemicRegion then
 		pandemic = CreateFrame("Frame", NextFrameName("Pandemic"), button)
-		pandemic:SetFrameLevel(button:GetFrameLevel() + 6)
+		-- Over the swipe but under the text overlay: the halo covers the whole icon, so above
+		-- the countdown it would wash the numbers out.
+		pandemic:SetFrameLevel(button:GetFrameLevel() + 4)
 		pandemic:SetAllPoints(button)
 
 		-- The halo reaches well past the holder, which nothing clips, so it needs no frame of its
@@ -829,7 +829,7 @@ end
 ---supported by the engine, so a change re-filters in place. Maps are compared by reference:
 ---the caller caches them and only hands over new tables when the configured list changes.
 ---@param hideUnimportant boolean Show only debuffs Blizzard flags nameplateShowPersonal (the
----12.1 replacement for the legacy per-aura alpha trick; not identity-gated).
+---engine's own importance flag, and not identity-gated, so it applies on enemies too).
 ---@param includeSpellIDs table? Map keyed by spell id; only listed spells show.
 ---@param excludeSpellIDs table? Map keyed by spell id; listed spells are hidden.
 function M:SetAuraFilters(hideUnimportant, includeSpellIDs, excludeSpellIDs)

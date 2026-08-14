@@ -74,7 +74,7 @@ function M:ResolveGroup(groupName)
 		return nil
 	end
 
-	-- Same addon and sub-group names the legacy containers use, so a skin picked on one path is
+	-- Same addon and sub-group names the slot containers use, so a skin picked on one path is
 	-- already applied on the other.
 	return masque:Group(addonName, groupName)
 end
@@ -106,7 +106,7 @@ function M:RegisterButton(instance, button, widgets)
 	-- Strict, so only the regions listed here are skinned rather than whatever Masque can find by
 	-- probing the button for names an engine-created one cannot have. Normal is deliberately
 	-- absent: with no entry Masque builds and owns the skin's border texture, which leaves the
-	-- pandemic ring registered with the engine untouched.
+	-- pandemic halo registered with the engine untouched.
 	if not Guard(instance, pcall(group.AddButton, group, button, {
 		Icon = widgets.Icon,
 		Cooldown = widgets.Cooldown,

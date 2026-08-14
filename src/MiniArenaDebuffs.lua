@@ -4,20 +4,15 @@ local mini = addon.Framework
 local wowEx = addon.WoWEx
 local IconSlotContainer = addon.IconSlotContainer
 local AuraContainerDisplay = addon.AuraContainerDisplay
--- TEMPORARY dual path: on 12.1+ real displays are AuraContainerDisplays (the engine tracks and
--- renders the auras); on 12.0 they are IconSlotContainers fed by legacy aura reads. Remove the
--- legacy path once 12.1 is live everywhere. Test mode always uses IconSlotContainers - it only
--- renders synthetic cooldowns, which needs no aura API on either client.
-local useAuraContainers = wowEx:UseAuraContainers()
--- Which pandemic visuals this client can honour, and therefore which ones the config offers. The
--- test icons draw from the same settings as the real ones, so without these a value saved on a
--- client that had the option would preview an effect the user has no switch for.
--- Desaturating needs the aura's remaining duration, which 12.1 keeps to itself; the glow is
--- engine-driven there and needs the refresh-window regions.
-local canDesaturate = not useAuraContainers
-local canGlow = not useAuraContainers or wowEx:HasPandemicRegions()
+-- Real displays are AuraContainerDisplays: the engine tracks and renders the auras. Test mode
+-- uses IconSlotContainers instead, which only ever draw synthetic cooldowns and so need no aura
+-- API at all.
+-- The refresh-window regions arrived after 12.1.0, so the glow is offered only where the client
+-- can drive it. Without the check a value saved on a client that had the option would preview an
+-- effect the user has no switch for, since the test icons read the same settings as the real ones.
+local canGlow = wowEx:HasPandemicRegions()
 local eventsFrame
----@type { Container: IconSlotContainer|AuraContainerDisplay, Unit: string }
+---@type { Container: AuraContainerDisplay, Unit: string }
 local entries = {}
 ---@type IconSlotContainer[]
 local testContainers = {}
@@ -36,7 +31,6 @@ local testSpells = {
 	{ Spell = 1822, Duration = 75 },              -- Rake
 }
 
-local filter = "HARMFUL|PLAYER"
 -- Masque sub-group both display paths skin through, so a chosen skin follows the icons whichever
 -- one is drawing them.
 local masqueGroup = "MiniArenaDebuffs"
@@ -104,33 +98,20 @@ local function BuildStyle()
 	}
 end
 
-local function GetSortRule()
-	if db.SortMethod == "INDEX" then
-		return Enum.UnitAuraSortRule.Unsorted
-	end
-	return Enum.UnitAuraSortRule.Expiration
-end
-
-local function GetSortDirection()
-	if db.SortDirection == "-" then
-		return Enum.UnitAuraSortDirection.Reverse
-	end
-	return Enum.UnitAuraSortDirection.Normal
-end
-
 local function ApplyGrowDirection(container)
 	local grow = db.Grow or "RIGHT"
 	container:SetGrowDown(false)
 	container:SetInvertLayout(grow == "LEFT")
 end
 
+---Test mode's icons are the only IconSlotContainers left, so these two settings pushes are the
+---preview's alone; the real displays go through UpdateDisplayOptions.
 local function UpdateContainerOptions(container)
 	container:SetCount(db.MaxIcons or 6)
 	container:SetIconSize(db.Icons.Size or 36)
 	container:SetSpacing(db.Icons.Spacing or 2)
 	container:SetFontScale(db.Icons.FontScale or 1.0)
 	container:SetPandemicGlow(canGlow and db.Icons.PandemicGlow or false)
-	container:SetPandemicDesaturate(canDesaturate and db.Icons.PandemicDesaturate or false)
 	local pandemicColor = GetPandemicColor()
 	container:SetPandemicColor(pandemicColor[1], pandemicColor[2], pandemicColor[3])
 	container:SetIconZoom(db.Icons.Zoom ~= false)
@@ -147,7 +128,6 @@ local function CreateContainer()
 	)
 	container:Hide()
 	container:SetPandemicGlow(canGlow and db.Icons.PandemicGlow or false)
-	container:SetPandemicDesaturate(canDesaturate and db.Icons.PandemicDesaturate or false)
 	local pandemicColor = GetPandemicColor()
 	container:SetPandemicColor(pandemicColor[1], pandemicColor[2], pandemicColor[3])
 	container:SetIconZoom(db.Icons.Zoom ~= false)
@@ -155,8 +135,8 @@ local function CreateContainer()
 	return container
 end
 
----Pushes the current settings onto a 12.1 AuraContainerDisplay; the engine handles the aura
----tracking itself, so this replaces both UpdateContainerOptions and UpdateContainer there.
+---Pushes the current settings onto a real display. The engine tracks the auras itself, so this
+---is the whole of a refresh: there is nothing to read and nothing to draw.
 local function UpdateDisplayOptions(display)
 	display:SetMaxIcons(db.MaxIcons or 6)
 	display:SetGrow(db.Grow or "RIGHT")
@@ -164,44 +144,6 @@ local function UpdateDisplayOptions(display)
 	local includeSpellIDs, excludeSpellIDs = GetSpellFilterMaps()
 	display:SetAuraFilters(db.Icons.HideUnimportant or false, includeSpellIDs, excludeSpellIDs)
 	display:ApplyConfig(db.Icons.Size or 36, db.Icons.Spacing or 2, BuildStyle())
-end
-
-local function UpdateContainer(container, unit)
-	if not unit then
-		container:ResetAllSlots()
-		return
-	end
-
-	local auraList = C_UnitAuras.GetUnitAuras(unit, filter, container.Count, GetSortRule(), GetSortDirection())
-
-	container:ResetAllSlots()
-
-	if not auraList then
-		return
-	end
-
-	for idx, aura in ipairs(auraList) do
-		local durationObj = C_UnitAuras.GetAuraDuration(unit, aura.auraInstanceID)
-		-- nameplateShowPersonal is a secret boolean in tainted contexts; assign without testing it
-		local nameplateShowPersonal
-		if db.Icons.HideUnimportant then
-			nameplateShowPersonal = aura.nameplateShowPersonal
-		end
-		-- IsAuraFilteredOutByInstanceID returns false when the aura matches all filter terms.
-		-- We already know it's HARMFUL, so a false result here means it's CC.
-		local isCC = not C_UnitAuras.IsAuraFilteredOutByInstanceID(
-			unit, aura.auraInstanceID, "HARMFUL|CROWD_CONTROL"
-		)
-		container:SetSlot(idx, {
-			Texture = aura.icon,
-			DurationObject = durationObj,
-			HideSwipe = db.Icons.HideSwipe,
-			ReverseCooldown = db.Icons.ReverseCooldown,
-			HideNumbers = db.Icons.HideNumbers,
-			NameplateShowPersonal = nameplateShowPersonal,
-			IsCC = isCC,
-		})
-	end
 end
 
 local function GetDefaultAnchor(i)
@@ -247,11 +189,10 @@ local function GetAnchor(i)
 end
 
 local function AnchorContainer(container, anchor)
+	-- Centring needs no width of our own: the container's centre goes on the anchor's and the
+	-- engine lays the icons out inside it, which is just as well - a container's size can be
+	-- secret, so nothing here could do the arithmetic.
 	local grow = db.Grow or "RIGHT"
-	if useAuraContainers and grow == "CENTER" then
-		-- The container's size can be secret on 12.1, so a centred row can't be positioned.
-		grow = "RIGHT"
-	end
 	local anchorPoint, relativePoint
 	if grow == "LEFT" then
 		anchorPoint = "RIGHT"
@@ -292,18 +233,13 @@ local function EnsureEntry(anchor)
 	local entry = entries[anchor]
 
 	if not entry then
-		local container
-		if useAuraContainers then
-			-- The style rides along at creation: buttons are born styled in initializeFrame, and
-			-- a display created inside an arena can't be restyled until the match ends.
-			container = AuraContainerDisplay:New(
-				UIParent, unit, db.MaxIcons or 6, db.Icons.Size or 36, db.Icons.Spacing or 2, BuildStyle(),
-				masqueGroup
-			)
-			container:Hide()
-		else
-			container = CreateContainer()
-		end
+		-- The style rides along at creation: buttons are born styled in initializeFrame, and a
+		-- display created inside an arena can't be restyled until the match ends.
+		local container = AuraContainerDisplay:New(
+			UIParent, unit, db.MaxIcons or 6, db.Icons.Size or 36, db.Icons.Spacing or 2, BuildStyle(),
+			masqueGroup
+		)
+		container:Hide()
 		entry = { Container = container, Unit = unit }
 		entries[anchor] = entry
 	else
@@ -339,10 +275,9 @@ local function UpdateTestContainer(container)
 				HideSwipe = db.Icons.HideSwipe,
 				ReverseCooldown = db.Icons.ReverseCooldown,
 				HideNumbers = db.Icons.HideNumbers,
-				-- The extras preview 12.1-only settings; their toggles don't exist on 12.0.
-				ShowMilliseconds = useAuraContainers and db.Icons.ShowMilliseconds or false,
-				ColorCountdown = useAuraContainers and db.Icons.ColorCountdown or false,
-				StackText = (useAuraContainers and db.Icons.ShowStacks and spec.Stacks) or nil,
+				ShowMilliseconds = db.Icons.ShowMilliseconds or false,
+				ColorCountdown = db.Icons.ColorCountdown or false,
+				StackText = (db.Icons.ShowStacks and spec.Stacks) or nil,
 			})
 		end
 	end
@@ -432,28 +367,22 @@ local function RealMode()
 		currentAnchors[anchor] = true
 	end
 
-	-- Update or hide each entry (hidden AuraContainers unregister their events, so Hide is
-	-- also the cheap parked state on 12.1)
+	-- Update or hide each entry (hidden AuraContainers unregister their events, so Hide is also
+	-- the cheap parked state)
 	for anchor, entry in pairs(entries) do
 		local unit = currentAnchors[anchor] and (anchor.unit or anchor:GetAttribute("unit")) or nil
 		-- The arena frames outlive the match, so an anchor still being there says nothing about
 		-- whether there is an opponent to draw for. UnitExists is what ends the display, the same
-		-- test Blizzard's own arena frames use: without it a 12.1 container keeps the last match's
+		-- test Blizzard's own arena frames use: without it a container keeps the last match's
 		-- icons on screen, since a unit that no longer exists sends no aura event to clear them.
 		if not unit or not UnitExists(unit) then
 			entry.Container:Hide()
 		else
 			entry.Unit = unit
 
-			if useAuraContainers then
-				UpdateDisplayOptions(entry.Container)
-				entry.Container:SetUnit(unit)
-				AnchorContainer(entry.Container, anchor)
-			else
-				UpdateContainerOptions(entry.Container)
-				AnchorContainer(entry.Container, anchor)
-				UpdateContainer(entry.Container, entry.Unit)
-			end
+			UpdateDisplayOptions(entry.Container)
+			entry.Container:SetUnit(unit)
+			AnchorContainer(entry.Container, anchor)
 			entry.Container:Show()
 		end
 	end
@@ -505,50 +434,7 @@ local function TestMode()
 	end
 end
 
-local function UpdateUnitAuraRegistration()
-	-- 12.1: AuraContainers react to aura changes internally; the addon never reads UNIT_AURA.
-	if useAuraContainers then
-		return
-	end
-
-	eventsFrame:UnregisterEvent("UNIT_AURA")
-	local seen = {}
-	local unitList = {}
-	for _, entry in pairs(entries) do
-		local unit = entry.Unit
-		if unit and not seen[unit] then
-			seen[unit] = true
-			unitList[#unitList + 1] = unit
-		end
-	end
-	if #unitList > 0 then
-		eventsFrame:RegisterUnitEvent("UNIT_AURA", unpack(unitList))
-	end
-end
-
-local function HasRelevantAuraChanges(unit, auraData)
-	if auraData.isFullUpdate then
-		return true
-	end
-	if auraData.addedAuras then
-		for _, aura in ipairs(auraData.addedAuras) do
-			if not C_UnitAuras.IsAuraFilteredOutByInstanceID(unit, aura.auraInstanceID, filter) then
-				return true
-			end
-		end
-	end
-	if auraData.updatedAuraInstanceIDs then
-		for _, auraInstanceID in ipairs(auraData.updatedAuraInstanceIDs) do
-			if not C_UnitAuras.IsAuraFilteredOutByInstanceID(unit, auraInstanceID, filter) then
-				return true
-			end
-		end
-	end
-	-- Removed auras no longer exist, so the filter can't be queried; refresh on any removal.
-	return (auraData.removedAuraInstanceIDs and #auraData.removedAuraInstanceIDs > 0)
-end
-
-local function OnEvent(_, event, unit, auraData)
+local function OnEvent(_, event)
 	if event == "PLAYER_REGEN_DISABLED" then
 		if testMode then
 			testMode = false
@@ -556,14 +442,6 @@ local function OnEvent(_, event, unit, auraData)
 		end
 	elseif event == "PLAYER_ENTERING_WORLD" or event == "ARENA_OPPONENT_UPDATE" then
 		addon:Refresh()
-	elseif event == "UNIT_AURA" then
-		if not testMode and HasRelevantAuraChanges(unit, auraData) then
-			for _, entry in pairs(entries) do
-				if entry.Unit == unit then
-					UpdateContainer(entry.Container, entry.Unit)
-				end
-			end
-		end
 	end
 end
 
@@ -579,12 +457,10 @@ local function OnAddonLoaded()
 	eventsFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 
 	EnsureEntries()
-	UpdateUnitAuraRegistration()
 end
 
 function addon:Refresh()
 	EnsureEntries()
-	UpdateUnitAuraRegistration()
 
 	if testMode then
 		TestMode()

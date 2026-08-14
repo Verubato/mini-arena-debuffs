@@ -2,10 +2,7 @@
 local addonName, addon = ...
 local mini = addon.Framework
 local dropdownWidth = 200
--- TEMPORARY dual path: CENTER can't be positioned on 12.1 (container sizes can be secret);
--- fold the two lists back together once 12.1 is live everywhere.
-local useAuraContainers = addon.WoWEx:UseAuraContainers()
-local growOptions = useAuraContainers and { "RIGHT", "LEFT" } or { "RIGHT", "LEFT", "CENTER" }
+local growOptions = { "RIGHT", "LEFT", "CENTER" }
 local sortMethods = { "INDEX", "TIME" }
 local sortDirections = { "+", "-" }
 local verticalSpacing = mini.VerticalSpacing
@@ -24,7 +21,7 @@ local db
 
 ---@class Db
 local dbDefaults = {
-	Version = 6,
+	Version = 7,
 
 	SortMethod = "INDEX",
 	SortDirection = "+",
@@ -48,7 +45,6 @@ local dbDefaults = {
 		HideNumbers = false,
 		HideUnimportant = false,
 		PandemicGlow = false,
-		PandemicDesaturate = false,
 		PandemicColor = { R = 1, G = 0.6, B = 0.1 },
 		ShowStacks = true,
 		ShowMilliseconds = false,
@@ -57,8 +53,8 @@ local dbDefaults = {
 		Zoom = true,
 	},
 
-	-- 12.1 only: the legacy path cannot filter by spell id. Mode INCLUDE shows only the listed
-	-- spells, EXCLUDE hides them; Spells is the raw id text the user typed.
+	-- Mode INCLUDE shows only the listed spells, EXCLUDE hides them; Spells is the raw id text
+	-- the user typed.
 	SpellFilter = {
 		Mode = "OFF",
 		Spells = "",
@@ -170,6 +166,16 @@ local function GetAndUpgradeDb()
 		mini:CleanTable(vars, dbDefaults, true, true)
 	end
 
+	-- v6 -> v7: 12.0 is gone, and with it desaturating on pandemic, which needed the aura's own
+	-- remaining duration.
+	if vars.Version == 6 then
+		if vars.Icons then
+			vars.Icons.PandemicDesaturate = nil
+		end
+		vars.Version = 7
+		mini:CleanTable(vars, dbDefaults, true, true)
+	end
+
 	return vars
 end
 
@@ -201,17 +207,14 @@ local function BuildZoomIcons(panel)
 	})
 end
 
----The Glow on Pandemic toggle. Both display paths offer it; only the wording of what the window
----is differs, since 12.1 hands the refresh window to the engine rather than working it out here.
+---The Glow on Pandemic toggle. Built by the caller so the two display paths can each place it.
 ---@param panel table
 ---@return table
 local function BuildPandemicGlow(panel)
 	return mini:Checkbox({
 		Parent = panel,
 		LabelText = "Glow on Pandemic",
-		Tooltip = useAuraContainers
-			and "Glows icons while a debuff is in its refresh window (the last stretch where re-casting carries the remaining time over)."
-			or "Glows icons during the pandemic window (last 30% of the debuff's duration).",
+		Tooltip = "Glows icons while a debuff is in its refresh window (the last stretch where re-casting carries the remaining time over).",
 		GetValue = function()
 			return db.Icons.PandemicGlow
 		end,
@@ -601,10 +604,9 @@ local function CreateSpellPicker(panel, onAccept)
 	return box
 end
 
--- 12.1 only, and not just because the option is unwired on 12.0 - the legacy path reads auras
--- through the unit APIs, where the spell id comes back as a secret value that can never be
--- matched against a tracked id. Only the AuraContainer's spell-id candidate filters can do
--- this, because the engine does the matching itself.
+-- Filtering by spell id is the AuraContainer's candidate filters and nothing else: an addon
+-- reading auras itself gets the spell id back as a secret value that can never be matched
+-- against a tracked id, so the engine has to do the matching.
 local function InitSpellFilterPanel(category)
 	local spellSearch = addon.SpellSearch
 	local panel = CreateFrame("Frame")
@@ -877,116 +879,89 @@ function M:Init()
 	})
 	hideUnimportant:SetPoint("TOPLEFT", header.Anchor, "BOTTOMLEFT", columnWidth * 3 - 4, -verticalSpacing)
 
-	-- TEMPORARY dual path: desaturating on pandemic needs per-aura remaining duration, which 12.1
-	-- no longer exposes to addons; stacks, the countdown text upgrades and the pandemic reveal
-	-- are engine-driven and only exist there.
 	local sliderAnchor
-	if useAuraContainers then
-		local showStacks = mini:Checkbox({
-			Parent = panel,
-			LabelText = "Show Stacks",
-			Tooltip = "Shows the stack count on debuffs with more than one application.",
-			GetValue = function()
-				return db.Icons.ShowStacks
-			end,
-			SetValue = function(v)
-				db.Icons.ShowStacks = v
-				ApplySettings()
-			end,
-		})
-		showStacks:SetPoint("TOPLEFT", reverseSwipe, "BOTTOMLEFT", 0, -verticalSpacing)
+	local showStacks = mini:Checkbox({
+		Parent = panel,
+		LabelText = "Show Stacks",
+		Tooltip = "Shows the stack count on debuffs with more than one application.",
+		GetValue = function()
+			return db.Icons.ShowStacks
+		end,
+		SetValue = function(v)
+			db.Icons.ShowStacks = v
+			ApplySettings()
+		end,
+	})
+	showStacks:SetPoint("TOPLEFT", reverseSwipe, "BOTTOMLEFT", 0, -verticalSpacing)
 
-		local showMilliseconds = mini:Checkbox({
-			Parent = panel,
-			LabelText = "Show Milliseconds",
-			Tooltip = "Shows tenths of a second on countdowns under 5 seconds, e.g. 4.3.",
-			GetValue = function()
-				return db.Icons.ShowMilliseconds
-			end,
-			SetValue = function(v)
-				db.Icons.ShowMilliseconds = v
-				ApplySettings()
-			end,
-		})
-		showMilliseconds:SetPoint("TOPLEFT", hideSwipe, "BOTTOMLEFT", 0, -verticalSpacing)
+	local showMilliseconds = mini:Checkbox({
+		Parent = panel,
+		LabelText = "Show Milliseconds",
+		Tooltip = "Shows tenths of a second on countdowns under 5 seconds, e.g. 4.3.",
+		GetValue = function()
+			return db.Icons.ShowMilliseconds
+		end,
+		SetValue = function(v)
+			db.Icons.ShowMilliseconds = v
+			ApplySettings()
+		end,
+	})
+	showMilliseconds:SetPoint("TOPLEFT", hideSwipe, "BOTTOMLEFT", 0, -verticalSpacing)
 
-		local colorCountdown = mini:Checkbox({
-			Parent = panel,
-			LabelText = "Color Countdown",
-			Tooltip = "Colors the countdown text by time remaining: red under 5 seconds, yellow under a minute.",
-			GetValue = function()
-				return db.Icons.ColorCountdown
-			end,
-			SetValue = function(v)
-				db.Icons.ColorCountdown = v
-				ApplySettings()
-			end,
-		})
-		colorCountdown:SetPoint("TOPLEFT", hideNumbers, "BOTTOMLEFT", 0, -verticalSpacing)
+	local colorCountdown = mini:Checkbox({
+		Parent = panel,
+		LabelText = "Color Countdown",
+		Tooltip = "Colors the countdown text by time remaining: red under 5 seconds, yellow under a minute.",
+		GetValue = function()
+			return db.Icons.ColorCountdown
+		end,
+		SetValue = function(v)
+			db.Icons.ColorCountdown = v
+			ApplySettings()
+		end,
+	})
+	colorCountdown:SetPoint("TOPLEFT", hideNumbers, "BOTTOMLEFT", 0, -verticalSpacing)
 
-		sliderAnchor = showStacks
+	sliderAnchor = showStacks
 
-		-- Pandemic regions arrived after 12.1.0 (feature-detected), so the reveal and its colour
-		-- only show on clients that can actually drive it.
-		local hasPandemicRegions = addon.WoWEx:HasPandemicRegions()
+	-- Pandemic regions arrived after 12.1.0 (feature-detected), so the reveal and its colour
+	-- only show on clients that can actually drive it.
+	local hasPandemicRegions = addon.WoWEx:HasPandemicRegions()
 
-		if hasPandemicRegions then
-			local pandemicGlow = BuildPandemicGlow(panel)
-			pandemicGlow:SetPoint("TOPLEFT", showStacks, "BOTTOMLEFT", 0, -verticalSpacing)
-
-			local pandemicColor = mini:ColorSwatch({
-				Parent = panel,
-				LabelText = "Pandemic Color",
-				Tooltip = "Click to change the pandemic glow's colour.",
-				HasOpacity = false,
-				GetValue = function()
-					local color = db.Icons.PandemicColor or {}
-					return color.R or 1, color.G or 0.6, color.B or 0.1, 1
-				end,
-				SetValue = function(r, g, b)
-					db.Icons.PandemicColor = { R = r, G = g, B = b }
-					ApplySettings()
-				end,
-			})
-			-- Beside the toggle it belongs to, one column over. Anchored by LEFT rather than the
-			-- grid's TOPLEFT so the two line up through their middles: the swatch is a small
-			-- square against a checkbox half again as tall.
-			pandemicColor:SetPoint("LEFT", pandemicGlow, "LEFT", columnWidth, 0)
-			-- The sliders hang off this, so it has to be the first column of the last row.
-			sliderAnchor = pandemicGlow
-		end
-
-		local zoomIcons = BuildZoomIcons(panel)
-		if hasPandemicRegions then
-			-- The last column of the row above, which the pandemic pair left free by moving down
-			-- together.
-			zoomIcons:SetPoint("TOPLEFT", hideUnimportant, "BOTTOMLEFT", 0, -verticalSpacing)
-		else
-			zoomIcons:SetPoint("TOPLEFT", showStacks, "BOTTOMLEFT", 0, -verticalSpacing)
-			sliderAnchor = zoomIcons
-		end
-	else
+	if hasPandemicRegions then
 		local pandemicGlow = BuildPandemicGlow(panel)
-		pandemicGlow:SetPoint("TOPLEFT", reverseSwipe, "BOTTOMLEFT", 0, -verticalSpacing)
+		pandemicGlow:SetPoint("TOPLEFT", showStacks, "BOTTOMLEFT", 0, -verticalSpacing)
 
-		local pandemicDesaturate = mini:Checkbox({
+		local pandemicColor = mini:ColorSwatch({
 			Parent = panel,
-			LabelText = "Desaturate on Pandemic",
-			Tooltip = "Desaturates icons during the pandemic window (last 30% of the debuff's duration).",
+			LabelText = "Pandemic Color",
+			Tooltip = "Click to change the pandemic glow's colour.",
+			HasOpacity = false,
 			GetValue = function()
-				return db.Icons.PandemicDesaturate
+				local color = db.Icons.PandemicColor or {}
+				return color.R or 1, color.G or 0.6, color.B or 0.1, 1
 			end,
-			SetValue = function(v)
-				db.Icons.PandemicDesaturate = v
+			SetValue = function(r, g, b)
+				db.Icons.PandemicColor = { R = r, G = g, B = b }
 				ApplySettings()
 			end,
 		})
-		pandemicDesaturate:SetPoint("TOPLEFT", hideSwipe, "BOTTOMLEFT", 0, -verticalSpacing)
-
-		local zoomIcons = BuildZoomIcons(panel)
-		zoomIcons:SetPoint("TOPLEFT", hideNumbers, "BOTTOMLEFT", 0, -verticalSpacing)
-
+		-- Beside the toggle it belongs to, one column over. Anchored by LEFT rather than the
+		-- grid's TOPLEFT so the two line up through their middles: the swatch is a small
+		-- square against a checkbox half again as tall.
+		pandemicColor:SetPoint("LEFT", pandemicGlow, "LEFT", columnWidth, 0)
+		-- The sliders hang off this, so it has to be the first column of the last row.
 		sliderAnchor = pandemicGlow
+	end
+
+	local zoomIcons = BuildZoomIcons(panel)
+	if hasPandemicRegions then
+		-- The last column of the row above, which the pandemic pair left free by moving down
+		-- together.
+		zoomIcons:SetPoint("TOPLEFT", hideUnimportant, "BOTTOMLEFT", 0, -verticalSpacing)
+	else
+		zoomIcons:SetPoint("TOPLEFT", showStacks, "BOTTOMLEFT", 0, -verticalSpacing)
+		sliderAnchor = zoomIcons
 	end
 
 	local iconSize = mini:Slider({
@@ -1124,8 +1099,6 @@ function M:Init()
 	end
 
 	InitPositionPanel(category)
-	if useAuraContainers then
-		InitSpellFilterPanel(category)
-	end
+	InitSpellFilterPanel(category)
 	addon.CustomAnchors:Init(category)
 end

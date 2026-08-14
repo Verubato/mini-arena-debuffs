@@ -17,7 +17,7 @@ Affliction/Agony/Corruption/Wither, Moonfire/Sunfire, Shadow Priest and Unholy D
 | Item | Value |
 |---|---|
 | Addon version | 4.0.0 |
-| Supported interface versions | 120100 (12.1.0) and 120007 (12.0.7), i.e. WoW Midnight |
+| Supported interface version | 120100 (12.1), i.e. WoW Midnight |
 | Saved variables | MiniArenaDebuffsDB (account-wide, shared by all characters) |
 | Optional dependencies | Masque, sArena_Reloaded |
 | Slash commands | /miniarenadebuffs and /miniad |
@@ -32,23 +32,16 @@ Affliction/Agony/Corruption/Wither, Moonfire/Sunfire, Shadow Priest and Unholy D
   button in options).
 - Any other argument just opens the options panel. There are no other subcommands.
 
-## Two engine paths: 12.0 vs 12.1
+## How the icons are drawn
 
-The addon behaves differently depending on the game client version. This matters for
-which options exist.
+The real arena icons are the game's AuraContainer system: the engine tracks and renders
+the auras itself, because addons can no longer read aura data directly (it is "secret").
+Test mode is the exception, since its icons are synthetic timers rather than real auras,
+and the addon draws those itself.
 
-- On 12.1+ clients (interface 120100 or higher), the addon uses the game's new
-  AuraContainer system. The game engine itself tracks and renders the auras; addons can
-  no longer read aura data directly (it is "secret").
-- On 12.0 clients, the addon uses a legacy path where it reads auras itself via
-  UNIT_AURA events.
-
-Options that only exist on 12.1+: Show Stacks, Show Milliseconds, Color Countdown,
-the whole Spell Filter panel, and (on clients that support pandemic regions, per source
-comments 12.1.5+) Pandemic Border and Pandemic Border Color.
-
-Options that only exist on 12.0: Glow on Pandemic, Desaturate on Pandemic, and the
-CENTER grow direction.
+One pair of options is feature-detected rather than always present: Glow on Pandemic and
+Pandemic Color need the engine's refresh-window regions, which arrived after 12.1.0, so
+on an early 12.1 build they are hidden.
 
 ## Where debuffs are anchored
 
@@ -67,9 +60,9 @@ The icon row is placed relative to the anchor frame based on the Grow setting:
 - Grow RIGHT: row starts at the frame's right edge and grows right.
 - Grow LEFT: row starts at the frame's left edge and grows left (first icon nearest
   the frame).
-- Grow CENTER (12.0 only): row is centered on the frame. On 12.1 CENTER is not offered
-  and any stored CENTER value silently falls back to RIGHT (container sizes can be
-  secret on 12.1, so a centered row cannot be positioned).
+- Grow CENTER: the row is centered on the frame. The addon anchors the row's center to
+  the frame's center and lets the game lay the icons out inside it, so no width is
+  measured.
 
 Offset X / Offset Y shift the row from that anchor point.
 
@@ -93,7 +86,7 @@ Header text: "Shows your debuffs on arena frames." Buttons at the top right: "Te
 settings?" then resets all settings to defaults and prints "Settings reset to
 default."; blocked in combat).
 
-Checkboxes (always present):
+Checkboxes:
 
 | Option | Default | What it does |
 |---|---|---|
@@ -101,25 +94,12 @@ Checkboxes (always present):
 | Hide Swipe | off | Hides the cooldown swipe animation on icons. |
 | Hide Numbers | off | Hides the cooldown countdown numbers on icons. |
 | Hide Unimportant | off | Hides player-cast debuffs that Blizzard flags as unimportant (nameplateShowPersonal = false). |
-
-Checkboxes only on 12.1+ clients:
-
-| Option | Default | What it does |
-|---|---|---|
 | Show Stacks | on | Shows the stack count in the icon corner on debuffs with more than one application. |
 | Show Milliseconds | off | Shows tenths of a second on countdowns under 5 seconds, e.g. "4.3". |
 | Color Countdown | off | Colors the countdown text by time remaining: red under 5 seconds, yellow under a minute, white above. |
-| Pandemic Border | off | Shows a colored ring border while a debuff is inside its refresh (pandemic) window, driven by the game engine. Only shown on clients that support pandemic regions (per source comments, 12.1.5+; feature-detected, so it can be absent on early 12.1 builds). |
-| Pandemic Border Color | orange (R 1, G 0.6, B 0.1) | Color swatch for the pandemic border ring. Only shown together with Pandemic Border. No opacity control. |
-
-Checkboxes only on 12.0 clients:
-
-| Option | Default | What it does |
-|---|---|---|
-| Glow on Pandemic | off | Glows icons during the pandemic window (last 30% of the debuff's duration). |
-| Desaturate on Pandemic | off | Desaturates icons during the pandemic window (last 30% of the debuff's duration). |
-
-On the 12.0 path, crowd-control debuffs are excluded from pandemic visuals.
+| Zoom Icons | on | Crops Blizzard's silver border off the spell art so the icon sits flush. Turn it off to show the art exactly as Blizzard draws it. A Masque skin brings its own crop and ignores this, so with Masque installed the toggle only takes effect after a reload. |
+| Glow on Pandemic | off | Glows an icon while its debuff is inside the refresh (pandemic) window, driven by the game engine. Only shown on clients that support pandemic regions (per source comments, 12.1.5+; feature-detected, so it can be absent on early 12.1 builds). |
+| Pandemic Color | orange (R 1, G 0.6, B 0.1) | Color swatch for the pandemic glow. Only shown together with Glow on Pandemic. No opacity control. |
 
 Sliders (always present):
 
@@ -139,7 +119,7 @@ appear in."
 
 | Option | Default | Values |
 |---|---|---|
-| Grow | RIGHT | RIGHT, LEFT on 12.1+; RIGHT, LEFT, CENTER on 12.0 |
+| Grow | RIGHT | RIGHT, LEFT, CENTER |
 | Offset X | 0 | -250 to 250, step 1 |
 | Offset Y | 0 | -250 to 250, step 1 |
 | Sort Method | INDEX | INDEX, TIME |
@@ -150,11 +130,7 @@ appear in."
 - Sort Method TIME: icons sorted by time remaining (expiration).
 - Sort Direction reverses the chosen order.
 
-## Options: Spell Filter sub-panel (12.1+ clients only)
-
-This panel does not exist on 12.0 clients; the legacy aura path cannot match spell IDs
-because 12.1-era APIs return them as secret values, and on 12.0 the option is simply
-not wired up.
+## Options: Spell Filter sub-panel
 
 Header: "Limits which of your debuffs are shown."
 
@@ -198,16 +174,18 @@ Only slots 1-3 have override fields.
 - sArena / sArena_Reloaded: auto-detected. When `sArenaEnemyFrame1` exists, icons
   anchor to sArena frames automatically, and the addon deliberately does not fall back
   to the (invisible) Blizzard frames.
-- Masque: supported for icon skinning through the group name "MiniArenaDebuffs".
-  Masque skinning applies to the legacy icon containers, which means: real arena icons
-  on 12.0 clients, and test-mode icons on all clients. On 12.1+ the real in-arena icons
-  are rendered by the game's AuraContainer engine and are not Masque-skinned.
+- Masque: supported for icon skinning through the group name "MiniArenaDebuffs", on the
+  real arena icons and the test-mode ones alike, so a skin looks the same in a match and
+  in the preview. A skin is fitted to a button when that button is created, so changing
+  skin wants a UI reload. Where Glow on Pandemic is available the button's size can no
+  longer be read back either, so changing Icon Size re-lays the row but leaves the skin
+  art at its old size until a reload.
 - ElvUI / GladiusEx / other unit frame addons: no automatic detection; use the Custom
   Anchors panel and type the frame name.
 - Edit Mode: while Blizzard's Edit Mode is open, the game feeds fake placeholder auras
-  to all aura containers, so on 12.1+ the addon hides its real displays for the
-  duration and shows them again afterwards (this fixed placeholder icons appearing in
-  edit mode in 3.0.1).
+  to all aura containers, so the addon hides its real displays for the duration and
+  shows them again afterwards (this fixed placeholder icons appearing in edit mode in
+  3.0.1).
 
 ## Combat and instance restrictions
 
@@ -216,8 +194,8 @@ Only slots 1-3 have override fields.
 - In Midnight the options panel cannot be opened during combat; trying prints
   "Can't do that during combat."
 - Test mode exits automatically when combat starts.
-- On 12.1+, icon styling (size, font, swipe settings, etc.) cannot be pushed to
-  the live buttons while auras are "secret". That covers combat, but also
+- Icon styling (size, font, swipe settings, etc.) cannot be pushed to the live buttons
+  while auras are "secret". That covers combat, but also
   out-of-combat time inside arenas, Mythic+ and encounters. Changes made then are
   stored and re-applied automatically once the restriction lifts (retried every second
   and on leaving combat), so a mid-arena change may not be visible until the
@@ -257,9 +235,8 @@ Only slots 1-3 have override fields.
 
 ### "A specific debuff is not showing / I want to show only certain debuffs"
 
-- On 12.1+ use Options -> MiniArenaDebuffs -> Spell Filter. Add the spell by name
-  (English clients) or by spell ID.
-- On 12.0 clients there is no spell filter; it is technically impossible on that path.
+- Use Options -> MiniArenaDebuffs -> Spell Filter. Add the spell by name (English
+  clients) or by spell ID.
 - When adding by name, all spell-ID variants of that name are added automatically,
   which is usually what you want.
 - On non-English clients the name search finds nothing; enter the numeric spell ID
@@ -271,9 +248,9 @@ Only slots 1-3 have override fields.
 
 - Settings do not apply during combat ("Can't apply settings during combat."). Leave
   combat and change it again.
-- On 12.1+, changes made while inside an arena/M+/raid encounter (even out of combat)
-  can be deferred until the game lifts its aura-secrecy restriction; they apply
-  automatically afterwards.
+- Changes made while inside an arena/M+/raid encounter (even out of combat) can be
+  deferred until the game lifts its aura-secrecy restriction; they apply automatically
+  afterwards.
 
 ### "The Test button does nothing / test icons disappeared"
 
@@ -282,29 +259,17 @@ Only slots 1-3 have override fields.
 - If real arena-style frames are visible, test icons attach to those instead of
   showing the fake arena1-3 boxes.
 
-### "I don't have the Show Stacks / Show Milliseconds / Color Countdown / Spell Filter options"
+### "I don't have the Glow on Pandemic option"
 
-- Those only exist on 12.1+ game clients. On a 12.0 client the main panel shows
-  Glow on Pandemic and Desaturate on Pandemic instead, and there is no Spell Filter
-  panel.
+- The glow and its color swatch only appear on clients that support engine-driven
+  pandemic regions (per source comments, 12.1.5+). On earlier 12.1 builds the pair is
+  hidden because the client cannot drive the reveal.
 
-### "I don't have the Pandemic Border option"
+### "Masque skinned the icons but the skin looks the wrong size"
 
-- Pandemic Border (and its color swatch) only appears on clients that support
-  engine-driven pandemic regions (per source comments, 12.1.5+). On earlier 12.1
-  builds the toggle is hidden because the client cannot drive the ring.
-
-### "Grow CENTER is missing / my centered layout moved"
-
-- CENTER is only available on 12.0 clients. On 12.1+ the container's size can be
-  secret so a centered row cannot be positioned; the dropdown only offers RIGHT and
-  LEFT, and a previously saved CENTER behaves as RIGHT.
-
-### "Masque is not skinning the icons"
-
-- On 12.1+ clients the real arena icons are engine-rendered AuraContainer buttons and
-  are not passed to Masque. Masque skins apply to 12.0 real icons and to test-mode
-  icons only.
+- Skins are fitted when a button is created. Reload the UI after changing skin, and
+  after changing Icon Size while Glow on Pandemic is available, since the pandemic
+  region makes the button's size unreadable and the art cannot be re-fitted in place.
 
 ### "Placeholder/fake debuff icons appear"
 
@@ -330,13 +295,16 @@ Only slots 1-3 have override fields.
 
 ## Notes on limits and behavior
 
-- Icons refresh on arena opponent updates and when entering the world; on 12.0 also on
-  the anchored units' aura changes. On 12.1+ the game engine updates the icons itself.
+- The addon refreshes its displays on arena opponent updates and when entering the
+  world; the aura contents themselves are updated by the game engine.
 - Maximum of 10 icons per enemy (Max Icons slider cap).
 - Custom anchor overrides exist for arena slots 1-3 only; default (sArena/Blizzard)
   anchoring follows however many enemy frames exist.
-- The pandemic window on the 12.0 path is defined as the last 30% of the debuff's
-  duration. On 12.1+ the game engine computes the refresh window itself and the addon
-  cannot read its bounds.
-- Sorting "INDEX" on 12.1+ maps to sorting by aura instance ID, which approximates
-  application order.
+- The game engine computes the refresh (pandemic) window itself and the addon cannot
+  read its bounds; all it says is whether the glow should be drawn there. Test mode has
+  no real auras to ask about, so its preview treats the last 30% of each sample timer as
+  the window.
+- Sorting "INDEX" maps to sorting by aura instance ID, which approximates application
+  order.
+- Icons stop showing as soon as an arena opponent no longer exists, which is what clears
+  them when a match ends.
