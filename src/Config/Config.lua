@@ -932,7 +932,7 @@ function M:Init()
 
 		if hasPandemicRegions then
 			local pandemicGlow = BuildPandemicGlow(panel)
-			pandemicGlow:SetPoint("TOPLEFT", hideUnimportant, "BOTTOMLEFT", 0, -verticalSpacing)
+			pandemicGlow:SetPoint("TOPLEFT", showStacks, "BOTTOMLEFT", 0, -verticalSpacing)
 
 			local pandemicColor = mini:ColorSwatch({
 				Parent = panel,
@@ -948,16 +948,19 @@ function M:Init()
 					ApplySettings()
 				end,
 			})
-			pandemicColor:SetPoint("TOPLEFT", showStacks, "BOTTOMLEFT", 0, -verticalSpacing)
+			-- Beside the toggle it belongs to, one column over. Anchored by LEFT rather than the
+			-- grid's TOPLEFT so the two line up through their middles: the swatch is a small
+			-- square against a checkbox half again as tall.
+			pandemicColor:SetPoint("LEFT", pandemicGlow, "LEFT", columnWidth, 0)
 			-- The sliders hang off this, so it has to be the first column of the last row.
-			sliderAnchor = pandemicColor
+			sliderAnchor = pandemicGlow
 		end
 
 		local zoomIcons = BuildZoomIcons(panel)
-		-- Second column of whichever row is last: beside the pandemic colour where the reveal
-		-- exists, otherwise starting a row of its own under the stack toggle.
 		if hasPandemicRegions then
-			zoomIcons:SetPoint("TOPLEFT", showMilliseconds, "BOTTOMLEFT", 0, -verticalSpacing)
+			-- The last column of the row above, which the pandemic pair left free by moving down
+			-- together.
+			zoomIcons:SetPoint("TOPLEFT", hideUnimportant, "BOTTOMLEFT", 0, -verticalSpacing)
 		else
 			zoomIcons:SetPoint("TOPLEFT", showStacks, "BOTTOMLEFT", 0, -verticalSpacing)
 			sliderAnchor = zoomIcons
