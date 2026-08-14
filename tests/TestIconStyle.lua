@@ -1,5 +1,5 @@
 -- The parts of an aura button's look the addon drives itself: which colour curve the countdown
--- text carries, and whether the icon art is cropped.
+-- text carries, what the refresh-window region holds, and whether the icon art is cropped.
 
 local fw = require("TestFramework")
 local harness = require("AddonHarness")
@@ -47,6 +47,10 @@ local function CreateAuraButton()
 
 	function button:SetApplicationCount() end
 
+	function button:AddPandemicRegion(region)
+		self.PandemicRegion = region
+	end
+
 	function button:SetDurationText(_, options)
 		self.DurationTextOptions = options
 	end
@@ -63,11 +67,32 @@ local function BoundCurve(button)
 	return options and options.textColor and options.textColor.curve or nil
 end
 
+---The texture on a frame whose asset path contains the given name.
+---@param frame table
+---@param name string
+---@return table?
+local function FindTexture(frame, name)
+	for index = 1, frame:GetNumRegions() do
+		local region = select(index, frame:GetRegions())
+		local texture = region.GetTexture and region:GetTexture()
+
+		if type(texture) == "string" and texture:find(name, 1, true) then
+			return region
+		end
+	end
+
+	return nil
+end
+
 ---Loads the addon into an arena with one opponent and returns the aura group's initializeFrame.
 ---@return table context, function initializeFrame, table db
 local function LoadInArena()
 	WowMock.Install()
 	InstallCountdownText()
+
+	-- The refresh-window reveal, which the buttons only carry where the client can drive it.
+	C_UnitAuras.GetRefreshExtendedDuration = function() end
+	C_UnitAuras.GetAuraBaseDuration = function() end
 
 	-- Already installed above, and re-installing would wipe the stubs with it.
 	local context = harness.Load("MiniArenaDebuffs", { install = false })
@@ -124,6 +149,25 @@ fw.describe("MiniArenaDebuffs - icon style", function()
 		context.Addon:Refresh()
 
 		fw.is_nil(BoundCurve(button), "a hidden countdown was still given a colour")
+	end)
+
+	fw.it("hangs the pandemic halo off the engine-driven region", function()
+		local context, initializeFrame, db = LoadInArena()
+
+		local button = CreateAuraButton()
+		initializeFrame(button)
+
+		fw.not_nil(button.PandemicRegion, "the button took no pandemic region")
+
+		local glow = FindTexture(button.PandemicRegion, "SlotGlow")
+
+		fw.not_nil(glow, "the pandemic region carries no halo")
+		fw.eq(glow:GetAlpha(), 0, "the halo showed with the toggle off")
+
+		db.Icons.PandemicGlow = true
+		context.Addon:Refresh()
+
+		fw.eq(glow:GetAlpha(), 1, "the halo stayed hidden with the toggle on")
 	end)
 
 	fw.it("crops the icon art unless Zoom Icons is off", function()

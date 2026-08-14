@@ -1,7 +1,6 @@
 ---@type string, Addon
 local addonName, addon = ...
 local Masque = LibStub and LibStub("Masque", true)
-local LCG = LibStub and LibStub("LibCustomGlow-1.0", true)
 local iconUtil = addon.IconUtil
 -- Debounce table keyed by container: one deferred ReSkin per container per frame
 local masqueReskinPending = {}
@@ -34,8 +33,6 @@ local M = {}
 M.__index = M
 
 addon.IconSlotContainer = M
-
-local procGlowOptions = { key = "pandemic", startAnim = false }
 
 local function NextFrameName(frameType)
 	frameIdCounter = frameIdCounter + 1
@@ -185,49 +182,21 @@ local function RegisterCountdownColor(cd, expiry)
 	end
 end
 
----The refresh-window border ring, built on first use. Alpha-gated by the pandemic ticker;
----asset and default tint must match the engine-driven ring in AuraContainerDisplay so test
----mode previews exactly what real 12.1 icons show.
-local function EnsurePandemicRing(inst, slot)
-	local ring = slot.PandemicRing
+---The refresh-window halo, built on first use. Hosted on slot.PandemicOverlay so it draws over
+---the swipe, and alpha-gated by the pandemic ticker; asset and tint must match the halo in
+---AuraContainerDisplay so test mode previews what real 12.1 icons show.
+local function EnsurePandemicGlow(inst, slot)
+	local glow = slot.PandemicGlow
 
-	if not ring then
-		ring = CreateFrame("Frame", NextFrameName("PandemicRing"), slot.Frame)
-		ring:SetPoint("TOPLEFT", slot.Frame, "TOPLEFT", -2, 2)
-		ring:SetPoint("BOTTOMRIGHT", slot.Frame, "BOTTOMRIGHT", 2, -2)
-		ring:SetFrameLevel(slot.Cooldown:GetFrameLevel() + 6)
-		ring:SetAlpha(0)
+	if not glow then
+		glow = iconUtil:CreateGlow(slot.PandemicOverlay)
+		iconUtil:AnchorGlow(glow, slot.Frame, inst.Size)
+		glow:SetVertexColor(inst.PandemicColorR or 1, inst.PandemicColorG or 0.6, inst.PandemicColorB or 0.1, 1)
 
-		local texture = ring:CreateTexture(nil, "OVERLAY")
-		texture:SetAllPoints(ring)
-		texture:SetTexture("Interface\\Buttons\\UI-Debuff-Overlays")
-		texture:SetTexCoord(0.296875, 0.5703125, 0, 0.515625)
-		texture:SetVertexColor(inst.PandemicColorR or 1, inst.PandemicColorG or 0.6, inst.PandemicColorB or 0.1, 1)
-		ring.Texture = texture
-
-		slot.PandemicRing = ring
+		slot.PandemicGlow = glow
 	end
 
-	return ring
-end
-
--- Glow is hosted on slot.PandemicOverlay so its visibility can be gated by SetAlpha
--- without dimming the icon. The animation loops continuously while started; the
--- secret-number curve alpha (which we cannot compare) drives the overlay's alpha.
-local function StartGlow(slot)
-	if not LCG or slot.IsGlowing or not slot.PandemicOverlay then
-		return
-	end
-	LCG.ProcGlow_Start(slot.PandemicOverlay, procGlowOptions)
-	slot.IsGlowing = true
-end
-
-local function StopGlow(slot)
-	if not LCG or not slot.IsGlowing or not slot.PandemicOverlay then
-		return
-	end
-	LCG.ProcGlow_Stop(slot.PandemicOverlay, "pandemic")
-	slot.IsGlowing = false
+	return glow
 end
 
 -- Returns the pandemic alpha for a slot. Pattern from Platynator: the value may be
@@ -250,37 +219,19 @@ local function GetPandemicAlpha(slot)
 	return 0
 end
 
-local function UpdatePandemicForSlot(inst, slot, glowEnabled, desaturateEnabled, borderEnabled)
-	local overlay = slot.PandemicOverlay
-	if not slot.IsUsed or slot.IsCC or (not glowEnabled and not desaturateEnabled and not borderEnabled) then
-		StopGlow(slot)
-		if overlay then
-			overlay:SetAlpha(0)
-		end
-		if slot.PandemicRing then
-			slot.PandemicRing:SetAlpha(0)
+local function UpdatePandemicForSlot(inst, slot, glowEnabled, desaturateEnabled)
+	if not slot.IsUsed or slot.IsCC or (not glowEnabled and not desaturateEnabled) then
+		if slot.PandemicGlow then
+			slot.PandemicGlow:SetAlpha(0)
 		end
 		slot.Icon:SetDesaturation(0)
 		return
 	end
-	-- Toggle the glow animation strictly off the user setting; never test the secret value.
-	if glowEnabled then
-		StartGlow(slot)
-	else
-		StopGlow(slot)
-	end
 	local alpha = GetPandemicAlpha(slot)
-	if overlay then
-		if glowEnabled then
-			overlay:SetAlpha(alpha)
-		else
-			overlay:SetAlpha(0)
-		end
-	end
-	if borderEnabled then
-		EnsurePandemicRing(inst, slot):SetAlpha(alpha)
-	elseif slot.PandemicRing then
-		slot.PandemicRing:SetAlpha(0)
+	if glowEnabled then
+		EnsurePandemicGlow(inst, slot):SetAlpha(alpha)
+	elseif slot.PandemicGlow then
+		slot.PandemicGlow:SetAlpha(0)
 	end
 	if desaturateEnabled then
 		slot.Icon:SetDesaturation(alpha)
@@ -297,14 +248,13 @@ local function TickPandemic()
 		local visible = inst.Frame:IsShown()
 		local glow = inst.PandemicGlow and visible
 		local desat = inst.PandemicDesaturate and visible
-		local border = inst.PandemicBorder and visible
-		if glow or desat or border then
+		if glow or desat then
 			any = true
 		end
 		for j = 1, inst.Count do
 			local slot = inst.Slots[j]
 			if slot then
-				UpdatePandemicForSlot(inst, slot, glow, desat, border)
+				UpdatePandemicForSlot(inst, slot, glow, desat)
 			end
 		end
 	end
@@ -351,7 +301,6 @@ function M:New(parent, count, size, spacing, groupName)
 	instance.InvertLayout = false
 	instance.PandemicGlow = false
 	instance.PandemicDesaturate = false
-	instance.PandemicBorder = false
 	instance.IconZoom = true
 	instance.MasqueGroup = Masque and groupName and Masque:Group(addonName, groupName) or nil
 
@@ -371,7 +320,7 @@ function M:SetShown(shown)
 
 	-- The ticker stops itself once nothing needs it, so coming back into view is one of the
 	-- moments that has to start it again.
-	if shown and (self.PandemicGlow or self.PandemicDesaturate or self.PandemicBorder) then
+	if shown and (self.PandemicGlow or self.PandemicDesaturate) then
 		EnsurePandemicTicker()
 	end
 end
@@ -400,11 +349,8 @@ function M:SetPandemicGlow(enabled)
 	if not enabled then
 		for i = 1, self.Count do
 			local slot = self.Slots[i]
-			if slot then
-				StopGlow(slot)
-				if slot.PandemicOverlay then
-					slot.PandemicOverlay:SetAlpha(0)
-				end
+			if slot and slot.PandemicGlow then
+				slot.PandemicGlow:SetAlpha(0)
 			end
 		end
 	else
@@ -412,11 +358,11 @@ function M:SetPandemicGlow(enabled)
 	end
 end
 
----Tints the pandemic-window border ring; nil components fall back to the built-in amber.
+---Tints the pandemic-window halo; nil components fall back to the built-in amber.
 ---@param r number?
 ---@param g number?
 ---@param b number?
-function M:SetPandemicBorderColor(r, g, b)
+function M:SetPandemicColor(r, g, b)
 	if self.PandemicColorR == r and self.PandemicColorG == g and self.PandemicColorB == b then
 		return
 	end
@@ -425,30 +371,9 @@ function M:SetPandemicBorderColor(r, g, b)
 	self.PandemicColorB = b
 	for i = 1, #self.Slots do
 		local slot = self.Slots[i]
-		if slot and slot.PandemicRing then
-			slot.PandemicRing.Texture:SetVertexColor(r or 1, g or 0.6, b or 0.1, 1)
+		if slot and slot.PandemicGlow then
+			slot.PandemicGlow:SetVertexColor(r or 1, g or 0.6, b or 0.1, 1)
 		end
-	end
-end
-
----Enables or disables the pandemic-window border ring, matching the engine-driven ring real
----12.1 icons carry.
----@param enabled boolean
-function M:SetPandemicBorder(enabled)
-	enabled = enabled and true or false
-	if self.PandemicBorder == enabled then
-		return
-	end
-	self.PandemicBorder = enabled
-	if not enabled then
-		for i = 1, self.Count do
-			local slot = self.Slots[i]
-			if slot and slot.PandemicRing then
-				slot.PandemicRing:SetAlpha(0)
-			end
-		end
-	else
-		EnsurePandemicTicker()
 	end
 end
 
@@ -637,6 +562,10 @@ function M:SetIconSize(newSize)
 			if slot.Cooldown then
 				UpdateCooldownFontSize(slot.Cooldown, self.Size, self.FontScale)
 			end
+			-- The halo's padding is a share of the icon, so it has to be re-anchored.
+			if slot.PandemicGlow then
+				iconUtil:AnchorGlow(slot.PandemicGlow, slot.Frame, self.Size)
+			end
 			if slot.StackText then
 				UpdateStackFontSize(slot.StackText, self.Size, self.FontScale)
 			end
@@ -711,12 +640,12 @@ function M:SetCount(newCount)
 		iconUtil:SquareSwipe(cd)
 		UpdateCooldownFontSize(cd, self.Size, self.FontScale)
 
-		-- Glow lives on this overlay so we can SetAlpha it with the pandemic curve's
-		-- secret-number result without dimming the icon underneath.
+		-- The halo hangs off this overlay rather than the slot, so it draws above the cooldown
+		-- swipe. Its own alpha stays put: the curve's secret-number result rides the texture, and
+		-- dimming the frame would take the icon with it.
 		local pandemicOverlay = CreateFrame("Frame", NextFrameName("Pandemic"), slotFrame)
 		pandemicOverlay:SetAllPoints()
 		pandemicOverlay:SetFrameLevel(cd:GetFrameLevel() + 5)
-		pandemicOverlay:SetAlpha(0)
 
 		-- Own child frame levelled above the cooldown, which otherwise covers parent regions.
 		local textOverlay = CreateFrame("Frame", nil, slotFrame)
@@ -860,9 +789,8 @@ function M:ClearSlot(slotIndex)
 	slot.StartTime = nil
 	slot.Duration = nil
 	slot.IsCC = false
-	StopGlow(slot)
-	if slot.PandemicOverlay then
-		slot.PandemicOverlay:SetAlpha(0)
+	if slot.PandemicGlow then
+		slot.PandemicGlow:SetAlpha(0)
 	end
 	slot.Icon:SetDesaturation(0)
 end
@@ -912,7 +840,6 @@ end
 ---@field InvertLayout boolean
 ---@field PandemicGlow boolean
 ---@field PandemicDesaturate boolean
----@field PandemicBorder boolean
 ---@field IconZoom boolean
 ---@field SetCount fun(self: IconSlotContainer, count: number)
 ---@field SetSpacing fun(self: IconSlotContainer, spacing: number)
@@ -921,8 +848,7 @@ end
 ---@field SetIconSize fun(self: IconSlotContainer, size: number)
 ---@field SetFontScale fun(self: IconSlotContainer, scale: number)
 ---@field SetPandemicGlow fun(self: IconSlotContainer, enabled: boolean)
----@field SetPandemicBorder fun(self: IconSlotContainer, enabled: boolean)
----@field SetPandemicBorderColor fun(self: IconSlotContainer, r: number?, g: number?, b: number?)
+---@field SetPandemicColor fun(self: IconSlotContainer, r: number?, g: number?, b: number?)
 ---@field SetPandemicDesaturate fun(self: IconSlotContainer, enabled: boolean)
 ---@field SetIconZoom fun(self: IconSlotContainer, zoomed: boolean)
 ---@field SetSlot fun(self: IconSlotContainer, slotIndex: number, options: IconSlotOptions)

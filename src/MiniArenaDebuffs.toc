@@ -9,7 +9,6 @@
 ## X-Curse-Project-ID: 1421998
 
 Libs\LibStub\LibStub.lua
-Libs\LibCustomGlow-1.0\LibCustomGlow-1.0.xml
 
 Libs\MiniFramework\MiniFramework.xml
 Core\WoWEx.lua

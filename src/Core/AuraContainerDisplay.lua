@@ -30,9 +30,9 @@ local bounceFlushScheduled = false
 -- This file is only used when addon.WoWEx:UseAuraContainers() is true; on 12.0 clients nothing
 -- here runs (CreateFrame("AuraContainer") does not exist there).
 --
--- The legacy pandemic glow/desaturate options have no 12.1 equivalent (they need per-aura
--- remaining duration). Clients with pandemic regions (12.1.5+) instead get an engine-driven
--- refresh-window border, registered per button via AddPandemicRegion.
+-- Desaturating on pandemic has no 12.1 equivalent (it needs the per-aura remaining duration).
+-- The glow does: clients with pandemic regions (12.1.5+) get an engine-driven refresh-window
+-- halo, registered per button via AddPandemicRegion.
 
 ---@class AuraContainerDisplay
 local M = {}
@@ -50,12 +50,12 @@ local STYLE_FIELDS = {
 	"ShowStacks",
 	"ShowMilliseconds",
 	"ColorCountdown",
-	"PandemicBorder",
+	"PandemicGlow",
 	"Zoom",
 }
 
--- Ring tint for the pandemic (refresh-window) reveal, fixed so the cue reads the same at any
--- size. IconSlotContainer's test-mode ring must match.
+-- Halo tint for the pandemic (refresh-window) reveal, fixed so the cue reads the same at any
+-- size. IconSlotContainer's test-mode halo must match.
 local PANDEMIC_COLOR = { 1, 0.6, 0.1 }
 
 -- Seconds below which the countdown shows tenths ("4.3") when ShowMilliseconds is on.
@@ -536,16 +536,17 @@ local function StyleButton(instance, button)
 	end
 
 	-- The engine owns the pandemic holder's visibility (shown only inside the refresh window);
-	-- the toggle is ours and rides the ring's alpha instead.
+	-- the toggle is ours and rides the halo's alpha instead.
 	local pandemic = widgets.Pandemic
 	if pandemic then
-		pandemic.Ring:SetAlpha(style.PandemicBorder and 1 or 0)
-		pandemic.Ring:SetVertexColor(
-			style.PandemicColorR or PANDEMIC_COLOR[1],
-			style.PandemicColorG or PANDEMIC_COLOR[2],
-			style.PandemicColorB or PANDEMIC_COLOR[3],
-			1
-		)
+		local colorR = style.PandemicColorR or PANDEMIC_COLOR[1]
+		local colorG = style.PandemicColorG or PANDEMIC_COLOR[2]
+		local colorB = style.PandemicColorB or PANDEMIC_COLOR[3]
+
+		pandemic.Glow:SetAlpha(style.PandemicGlow and 1 or 0)
+		pandemic.Glow:SetVertexColor(colorR, colorG, colorB, 1)
+		-- The halo's padding is a share of the icon, so a size change re-anchors it.
+		iconUtil:AnchorGlow(pandemic.Glow, button, instance.Size)
 	end
 
 	-- No tooltips or click-to-cancel: the icons sit over arena frames and must not eat clicks.
@@ -603,8 +604,8 @@ local function InitializeButton(instance, button)
 	-- Pandemic reveal: the engine computes each aura's refresh window (the tail where re-casting
 	-- carries the remainder over) and drives the registered region's visibility itself - the
 	-- window's bounds are secret, so nothing here may read them. A holder frame is registered
-	-- rather than the ring texture, because registration hands the object's shown state to the
-	-- engine and it must be something this addon never shows or hides; the ring inside stays
+	-- rather than the halo texture, because registration hands the object's shown state to the
+	-- engine and it must be something this addon never shows or hides; the halo inside stays
 	-- ours, and the toggle rides its alpha (StyleButton). No animation on purpose: a looping
 	-- animation costs CPU every frame across every pre-created button. The holder is built here
 	-- but handed over at the end, after Masque has had the button.
@@ -612,16 +613,13 @@ local function InitializeButton(instance, button)
 	if instance.PandemicRegions and button.AddPandemicRegion then
 		pandemic = CreateFrame("Frame", NextFrameName("Pandemic"), button)
 		pandemic:SetFrameLevel(button:GetFrameLevel() + 6)
-		-- One pixel outside the icon's edge, so the ring reads as a border rather than a cover.
-		pandemic:SetPoint("TOPLEFT", button, "TOPLEFT", -2, 2)
-		pandemic:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 2, -2)
+		pandemic:SetAllPoints(button)
 
-		local ring = pandemic:CreateTexture(nil, "OVERLAY")
-		ring:SetAllPoints(pandemic)
-		ring:SetTexture("Interface\\Buttons\\UI-Debuff-Overlays")
-		ring:SetTexCoord(0.296875, 0.5703125, 0, 0.515625)
-		ring:SetVertexColor(PANDEMIC_COLOR[1], PANDEMIC_COLOR[2], PANDEMIC_COLOR[3], 1)
-		pandemic.Ring = ring
+		-- The halo reaches well past the holder, which nothing clips, so it needs no frame of its
+		-- own; StyleButton anchors it to the button at the padding the art wants.
+		local glow = iconUtil:CreateGlow(pandemic)
+		glow:SetVertexColor(PANDEMIC_COLOR[1], PANDEMIC_COLOR[2], PANDEMIC_COLOR[3], 1)
+		pandemic.Glow = glow
 	end
 
 	local widgets = {
@@ -927,8 +925,8 @@ end
 ---@field ShowStacks boolean? Show the engine-written application count in the icon's corner.
 ---@field ShowMilliseconds boolean? Show tenths of a second on countdowns under 5 seconds.
 ---@field ColorCountdown boolean? Colour the countdown text by time remaining.
----@field PandemicBorder boolean? Reveal the engine-driven refresh-window ring. Inert on
----clients without pandemic regions.
+---@field PandemicGlow boolean? Reveal the engine-driven refresh-window halo. Inert on clients
+---without pandemic regions.
 ---@field PandemicColor number[]? {r, g, b} tint for the ring; unset keeps the built-in amber.
 ---Copied component-wise, so callers may pass a fresh table per call.
 ---@field Zoom boolean? Crop Blizzard's baked border off the icon art. False keeps it.

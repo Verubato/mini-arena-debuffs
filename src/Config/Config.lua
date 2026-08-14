@@ -24,7 +24,7 @@ local db
 
 ---@class Db
 local dbDefaults = {
-	Version = 5,
+	Version = 6,
 
 	SortMethod = "INDEX",
 	SortDirection = "+",
@@ -49,7 +49,6 @@ local dbDefaults = {
 		HideUnimportant = false,
 		PandemicGlow = false,
 		PandemicDesaturate = false,
-		PandemicBorder = false,
 		PandemicColor = { R = 1, G = 0.6, B = 0.1 },
 		ShowStacks = true,
 		ShowMilliseconds = false,
@@ -160,6 +159,17 @@ local function GetAndUpgradeDb()
 		mini:CleanTable(vars, dbDefaults, true, true)
 	end
 
+	-- v5 -> v6: the pandemic border and glow drew the same cue, so they are one option now. The
+	-- two were per-path, so whichever the character's client offered is the one that carries over.
+	if vars.Version == 5 then
+		if vars.Icons then
+			vars.Icons.PandemicGlow = vars.Icons.PandemicGlow or vars.Icons.PandemicBorder or false
+			vars.Icons.PandemicBorder = nil
+		end
+		vars.Version = 6
+		mini:CleanTable(vars, dbDefaults, true, true)
+	end
+
 	return vars
 end
 
@@ -186,6 +196,27 @@ local function BuildZoomIcons(panel)
 		end,
 		SetValue = function(v)
 			db.Icons.Zoom = v
+			ApplySettings()
+		end,
+	})
+end
+
+---The Glow on Pandemic toggle. Both display paths offer it; only the wording of what the window
+---is differs, since 12.1 hands the refresh window to the engine rather than working it out here.
+---@param panel table
+---@return table
+local function BuildPandemicGlow(panel)
+	return mini:Checkbox({
+		Parent = panel,
+		LabelText = "Glow on Pandemic",
+		Tooltip = useAuraContainers
+			and "Glows icons while a debuff is in its refresh window (the last stretch where re-casting carries the remaining time over)."
+			or "Glows icons during the pandemic window (last 30% of the debuff's duration).",
+		GetValue = function()
+			return db.Icons.PandemicGlow
+		end,
+		SetValue = function(v)
+			db.Icons.PandemicGlow = v
 			ApplySettings()
 		end,
 	})
@@ -846,9 +877,9 @@ function M:Init()
 	})
 	hideUnimportant:SetPoint("TOPLEFT", header.Anchor, "BOTTOMLEFT", columnWidth * 3 - 4, -verticalSpacing)
 
-	-- TEMPORARY dual path: the legacy pandemic visuals need per-aura remaining duration, which
-	-- 12.1 no longer exposes to addons; stacks, the countdown text upgrades and the pandemic
-	-- border are engine-driven and only exist there.
+	-- TEMPORARY dual path: desaturating on pandemic needs per-aura remaining duration, which 12.1
+	-- no longer exposes to addons; stacks, the countdown text upgrades and the pandemic reveal
+	-- are engine-driven and only exist there.
 	local sliderAnchor
 	if useAuraContainers then
 		local showStacks = mini:Checkbox({
@@ -895,29 +926,18 @@ function M:Init()
 
 		sliderAnchor = showStacks
 
-		-- Pandemic regions arrived after 12.1.0 (feature-detected), so the toggle and its
-		-- colour only show on clients that can actually drive the ring.
+		-- Pandemic regions arrived after 12.1.0 (feature-detected), so the reveal and its colour
+		-- only show on clients that can actually drive it.
 		local hasPandemicRegions = addon.WoWEx:HasPandemicRegions()
 
 		if hasPandemicRegions then
-			local pandemicBorder = mini:Checkbox({
-				Parent = panel,
-				LabelText = "Pandemic Border",
-				Tooltip = "Shows a border while a debuff is in its refresh window (the last stretch where re-casting carries the remaining time over).",
-				GetValue = function()
-					return db.Icons.PandemicBorder
-				end,
-				SetValue = function(v)
-					db.Icons.PandemicBorder = v
-					ApplySettings()
-				end,
-			})
-			pandemicBorder:SetPoint("TOPLEFT", hideUnimportant, "BOTTOMLEFT", 0, -verticalSpacing)
+			local pandemicGlow = BuildPandemicGlow(panel)
+			pandemicGlow:SetPoint("TOPLEFT", hideUnimportant, "BOTTOMLEFT", 0, -verticalSpacing)
 
 			local pandemicColor = mini:ColorSwatch({
 				Parent = panel,
-				LabelText = "Pandemic Border Color",
-				Tooltip = "Click to change the pandemic border color.",
+				LabelText = "Pandemic Color",
+				Tooltip = "Click to change the pandemic glow's colour.",
 				HasOpacity = false,
 				GetValue = function()
 					local color = db.Icons.PandemicColor or {}
@@ -929,11 +949,12 @@ function M:Init()
 				end,
 			})
 			pandemicColor:SetPoint("TOPLEFT", showStacks, "BOTTOMLEFT", 0, -verticalSpacing)
+			-- The sliders hang off this, so it has to be the first column of the last row.
 			sliderAnchor = pandemicColor
 		end
 
 		local zoomIcons = BuildZoomIcons(panel)
-		-- Second column of whichever row is last: beside the pandemic colour where the ring
+		-- Second column of whichever row is last: beside the pandemic colour where the reveal
 		-- exists, otherwise starting a row of its own under the stack toggle.
 		if hasPandemicRegions then
 			zoomIcons:SetPoint("TOPLEFT", showMilliseconds, "BOTTOMLEFT", 0, -verticalSpacing)
@@ -942,18 +963,7 @@ function M:Init()
 			sliderAnchor = zoomIcons
 		end
 	else
-		local pandemicGlow = mini:Checkbox({
-			Parent = panel,
-			LabelText = "Glow on Pandemic",
-			Tooltip = "Glows icons during the pandemic window (last 30% of the debuff's duration).",
-			GetValue = function()
-				return db.Icons.PandemicGlow
-			end,
-			SetValue = function(v)
-				db.Icons.PandemicGlow = v
-				ApplySettings()
-			end,
-		})
+		local pandemicGlow = BuildPandemicGlow(panel)
 		pandemicGlow:SetPoint("TOPLEFT", reverseSwipe, "BOTTOMLEFT", 0, -verticalSpacing)
 
 		local pandemicDesaturate = mini:Checkbox({

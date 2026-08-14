@@ -91,7 +91,7 @@ local function BuildStyle()
 		ShowStacks = db.Icons.ShowStacks,
 		ShowMilliseconds = db.Icons.ShowMilliseconds,
 		ColorCountdown = db.Icons.ColorCountdown,
-		PandemicBorder = db.Icons.PandemicBorder,
+		PandemicGlow = db.Icons.PandemicGlow,
 		PandemicColor = GetPandemicColor(),
 		Zoom = db.Icons.Zoom ~= false,
 	}
@@ -124,10 +124,8 @@ local function UpdateContainerOptions(container)
 	container:SetFontScale(db.Icons.FontScale or 1.0)
 	container:SetPandemicGlow(db.Icons.PandemicGlow or false)
 	container:SetPandemicDesaturate(db.Icons.PandemicDesaturate or false)
-	-- Border previews the 12.1 engine ring; its toggle doesn't exist on 12.0.
-	container:SetPandemicBorder(useAuraContainers and db.Icons.PandemicBorder or false)
 	local pandemicColor = GetPandemicColor()
-	container:SetPandemicBorderColor(pandemicColor[1], pandemicColor[2], pandemicColor[3])
+	container:SetPandemicColor(pandemicColor[1], pandemicColor[2], pandemicColor[3])
 	container:SetIconZoom(db.Icons.Zoom ~= false)
 	ApplyGrowDirection(container)
 end
@@ -143,9 +141,8 @@ local function CreateContainer()
 	container:Hide()
 	container:SetPandemicGlow(db.Icons.PandemicGlow or false)
 	container:SetPandemicDesaturate(db.Icons.PandemicDesaturate or false)
-	container:SetPandemicBorder(useAuraContainers and db.Icons.PandemicBorder or false)
 	local pandemicColor = GetPandemicColor()
-	container:SetPandemicBorderColor(pandemicColor[1], pandemicColor[2], pandemicColor[3])
+	container:SetPandemicColor(pandemicColor[1], pandemicColor[2], pandemicColor[3])
 	container:SetIconZoom(db.Icons.Zoom ~= false)
 	ApplyGrowDirection(container)
 	return container
