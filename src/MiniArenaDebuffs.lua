@@ -424,10 +424,14 @@ local function RealMode()
 	-- Update or hide each entry (hidden AuraContainers unregister their events, so Hide is
 	-- also the cheap parked state on 12.1)
 	for anchor, entry in pairs(entries) do
-		if not currentAnchors[anchor] then
+		local unit = currentAnchors[anchor] and (anchor.unit or anchor:GetAttribute("unit")) or nil
+		-- The arena frames outlive the match, so an anchor still being there says nothing about
+		-- whether there is an opponent to draw for. UnitExists is what ends the display, the same
+		-- test Blizzard's own arena frames use: without it a 12.1 container keeps the last match's
+		-- icons on screen, since a unit that no longer exists sends no aura event to clear them.
+		if not unit or not UnitExists(unit) then
 			entry.Container:Hide()
 		else
-			local unit = anchor.unit or anchor:GetAttribute("unit")
 			entry.Unit = unit
 
 			if useAuraContainers then
