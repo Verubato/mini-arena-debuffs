@@ -9,6 +9,13 @@ local AuraContainerDisplay = addon.AuraContainerDisplay
 -- legacy path once 12.1 is live everywhere. Test mode always uses IconSlotContainers - it only
 -- renders synthetic cooldowns, which needs no aura API on either client.
 local useAuraContainers = wowEx:UseAuraContainers()
+-- Which pandemic visuals this client can honour, and therefore which ones the config offers. The
+-- test icons draw from the same settings as the real ones, so without these a value saved on a
+-- client that had the option would preview an effect the user has no switch for.
+-- Desaturating needs the aura's remaining duration, which 12.1 keeps to itself; the glow is
+-- engine-driven there and needs the refresh-window regions.
+local canDesaturate = not useAuraContainers
+local canGlow = not useAuraContainers or wowEx:HasPandemicRegions()
 local eventsFrame
 ---@type { Container: IconSlotContainer|AuraContainerDisplay, Unit: string }
 local entries = {}
@@ -122,8 +129,8 @@ local function UpdateContainerOptions(container)
 	container:SetIconSize(db.Icons.Size or 36)
 	container:SetSpacing(db.Icons.Spacing or 2)
 	container:SetFontScale(db.Icons.FontScale or 1.0)
-	container:SetPandemicGlow(db.Icons.PandemicGlow or false)
-	container:SetPandemicDesaturate(db.Icons.PandemicDesaturate or false)
+	container:SetPandemicGlow(canGlow and db.Icons.PandemicGlow or false)
+	container:SetPandemicDesaturate(canDesaturate and db.Icons.PandemicDesaturate or false)
 	local pandemicColor = GetPandemicColor()
 	container:SetPandemicColor(pandemicColor[1], pandemicColor[2], pandemicColor[3])
 	container:SetIconZoom(db.Icons.Zoom ~= false)
@@ -139,8 +146,8 @@ local function CreateContainer()
 		masqueGroup
 	)
 	container:Hide()
-	container:SetPandemicGlow(db.Icons.PandemicGlow or false)
-	container:SetPandemicDesaturate(db.Icons.PandemicDesaturate or false)
+	container:SetPandemicGlow(canGlow and db.Icons.PandemicGlow or false)
+	container:SetPandemicDesaturate(canDesaturate and db.Icons.PandemicDesaturate or false)
 	local pandemicColor = GetPandemicColor()
 	container:SetPandemicColor(pandemicColor[1], pandemicColor[2], pandemicColor[3])
 	container:SetIconZoom(db.Icons.Zoom ~= false)
