@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.0.1
+
+Added a Mini category so the addon groups with the other Mini addons in the addon list.
+
 ## 5.0.0
 
 - Dropped 12.0.7 support; the addon is 12.1 only now.
