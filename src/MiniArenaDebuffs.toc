@@ -1,6 +1,7 @@
 ## Interface: 120100
 ## Title: MiniArenaDebuffs
 ## Notes: Shows debuffs on arena frames.
+## Category: Mini
 ## Author: Verz
 ## Version: 5.0.0
 ## SavedVariables: MiniArenaDebuffsDB
