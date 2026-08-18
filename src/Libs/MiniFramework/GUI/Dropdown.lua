@@ -1,6 +1,7 @@
 local addonName, addon = ...
 local M = addon.Framework
 local GUI = M.GUI
+local L = M.L
 local dropDownId = 1
 
 -- A long item list runs off the bottom of the screen and everything below the edge becomes
@@ -15,6 +16,27 @@ local ROW_EXTENT = 20
 local FIELD_HEIGHT = 20
 local CHEVRON_SIZE = 12
 local CHEVRON_INSET = 7
+
+---Hangs a tooltip off a built dropdown. Hooked rather than set, so whatever the template
+---already does on hover survives.
+local function AttachTooltip(dropdown, options)
+	local title = options.TooltipTitle or options.LabelText
+
+	if not title or title:match("^%s*$") then
+		title = L["Information"]
+	end
+
+	dropdown:HookScript("OnEnter", function(ddSelf)
+		GameTooltip:SetOwner(ddSelf, "ANCHOR_RIGHT")
+		GameTooltip:SetText(title, 1, 0.82, 0)
+		GameTooltip:AddLine(options.Tooltip, 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+
+	dropdown:HookScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+end
 
 ---Reserves a globally unique frame name. Dropdown templates misbehave when unnamed, and
 ---the name must be addon-scoped or two Mini addons loaded together collide on the global.
@@ -171,6 +193,10 @@ function M:Dropdown(options)
 			dd:SetPoint("LEFT", label, "RIGHT", M.HorizontalSpacing, 0)
 		end
 
+		if options.Tooltip then
+			AttachTooltip(dd, options)
+		end
+
 		GUI.AddControlForRefresh(options.Parent, dd)
 
 		return dd, isModern
@@ -185,11 +211,19 @@ function M:Dropdown(options)
 			ApplyMenuLayout(rootDescription, #options.Items, options.Columns, maxRows)
 
 			for _, value in ipairs(options.Items) do
-				rootDescription:CreateRadio(GetText(value), function(x)
+				local radio = rootDescription:CreateRadio(GetText(value), function(x)
 					return x == options.GetValue()
 				end, function()
 					options.SetValue(value)
 				end, value)
+
+				-- Modern menus only: the legacy paths have no per-row hook, and a row without
+				-- its decoration is just a plain row.
+				if options.DecorateItem and radio and radio.AddInitializer then
+					radio:AddInitializer(function(button)
+						options.DecorateItem(button, value)
+					end)
+				end
 			end
 		end)
 
@@ -301,9 +335,14 @@ end
 ---@field Parent table
 ---@field Items any[]
 ---@field LabelText string?
+---@field Tooltip string? Shown on hover. Modern menus only; the legacy frames never see the hover.
+---@field TooltipTitle string? Tooltip heading, for a caller that draws its own label.
 ---@field Width number?
 ---@field Columns number? Fixed column count; omit to scale with the item count, 1 to opt out
 ---@field MaxRows number? Rows per column before the menu scrolls, default 20
 ---@field GetValue fun(): any
 ---@field SetValue fun(value: any)
 ---@field GetText? fun(value: any): string
+---@field DecorateItem? fun(button: table, value: any) Runs as the open menu builds each item's
+---row, for per-row looks the menu system cannot express (e.g. a font list previewing itself).
+---Modern menus only; the legacy paths show plain rows.
