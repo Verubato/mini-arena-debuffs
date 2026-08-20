@@ -113,6 +113,17 @@ fw.describe("MiniArenaDebuffs - Masque", function()
 
 		fw.not_nil(container, "the addon created no aura container")
 
+		-- Declaring the group already ran initializeFrame over the button the container built.
+		-- The order things are registered in is what this case is about, so the record starts
+		-- clean and the callback is driven again with a button that reports what it was asked.
+		for index = #group.Buttons, 1, -1 do
+			group.Buttons[index] = nil
+		end
+
+		for index = #log, 1, -1 do
+			log[index] = nil
+		end
+
 		local button = CreateAuraButton(log)
 
 		container:GetAuraGroup("debuffs").Options.initializeFrame(button)
