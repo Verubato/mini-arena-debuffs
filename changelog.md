@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.0.2
+
+Reduced CPU use in arena: a burst of opponent updates now refreshes the icons once rather than once per update.
+
 ## 5.0.1
 
 Added a Mini category so the addon groups with the other Mini addons in the addon list.

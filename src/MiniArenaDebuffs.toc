@@ -3,7 +3,7 @@
 ## Notes: Shows debuffs on arena frames.
 ## Category: Mini
 ## Author: Verz
-## Version: 5.0.1
+## Version: 5.0.2
 ## SavedVariables: MiniArenaDebuffsDB
 ## OptionalDeps: Masque, sArena_Reloaded
 ## IconTexture: Interface\AddOns\MiniArenaDebuffs\Icon.blp
