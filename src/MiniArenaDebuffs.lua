@@ -11,6 +11,8 @@ local AuraContainerDisplay = addon.AuraContainerDisplay
 -- can drive it. Without the check a value saved on a client that had the option would preview an
 -- effect the user has no switch for, since the test icons read the same settings as the real ones.
 local canGlow = wowEx:HasPandemicRegions()
+-- Whether a refresh is already waiting on the next frame.
+local refreshQueued = false
 local eventsFrame
 ---@type { Container: AuraContainerDisplay, Unit: string }
 local entries = {}
@@ -434,6 +436,22 @@ local function TestMode()
 	end
 end
 
+local function OnRefreshTick()
+	refreshQueued = false
+	addon:Refresh()
+end
+
+---Refreshes on the next frame, once, however many events asked. ARENA_OPPONENT_UPDATE fires
+---per opponent per state change and arrives in bursts at the gates.
+local function QueueRefresh()
+	if refreshQueued then
+		return
+	end
+
+	refreshQueued = true
+	C_Timer.After(0, OnRefreshTick)
+end
+
 local function OnEvent(_, event)
 	if event == "PLAYER_REGEN_DISABLED" then
 		if testMode then
@@ -441,7 +459,7 @@ local function OnEvent(_, event)
 			addon:Refresh()
 		end
 	elseif event == "PLAYER_ENTERING_WORLD" or event == "ARENA_OPPONENT_UPDATE" then
-		addon:Refresh()
+		QueueRefresh()
 	end
 end
 
