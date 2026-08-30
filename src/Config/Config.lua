@@ -239,7 +239,7 @@ local function InitPositionPanel(category)
 		},
 	})
 
-	local growLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	local growLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
 	growLbl:SetText("Grow")
 
 	local growDdl, modernDdl = mini:Dropdown({
@@ -299,7 +299,7 @@ local function InitPositionPanel(category)
 	sortDivider:SetPoint("RIGHT", panel, "RIGHT", -horizontalSpacing, 0)
 	sortDivider:SetPoint("TOP", offsetX.Slider, "BOTTOM", 0, -verticalSpacing)
 
-	local sortMethodLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	local sortMethodLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
 	sortMethodLbl:SetText("Sort Method")
 
 	local sortMethodDdl
@@ -321,7 +321,7 @@ local function InitPositionPanel(category)
 	sortMethodLbl:SetPoint("TOPLEFT", sortDivider, "BOTTOMLEFT", 0, -verticalSpacing)
 	sortMethodDdl:SetPoint("TOPLEFT", sortMethodLbl, "BOTTOMLEFT", modernDdl and 0 or -16, -8)
 
-	local sortDirLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	local sortDirLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
 	sortDirLbl:SetText("Sort Direction")
 
 	local sortDirDdl = mini:Dropdown({
@@ -671,7 +671,7 @@ local function InitSpellFilterPanel(category)
 		return groups
 	end
 
-	local filterModeLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	local filterModeLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
 	filterModeLbl:SetText("Mode")
 
 	local filterModeText = {
@@ -743,7 +743,7 @@ local function InitSpellFilterPanel(category)
 		Populate()
 	end
 
-	local pickerLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	local pickerLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
 	pickerLbl:SetText("Add Spell")
 
 	local picker = CreateSpellPicker(panel, AddSpell)
