@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.0.3
+
+UI improvements.
+
 ## 5.0.2
 
 Reduced CPU use in arena: a burst of opponent updates now refreshes the icons once rather than once per update.

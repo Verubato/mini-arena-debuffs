@@ -1,6 +1,6 @@
 # MiniArenaDebuffs - Support Reference
 
-Accurate as of addon version 5.0.2. Everything below is derived from the addon source.
+Accurate as of addon version 5.0.3. Everything below is derived from the addon source.
 
 ## What the addon does
 
