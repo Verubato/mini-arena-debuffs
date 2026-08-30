@@ -297,7 +297,7 @@ local function InitPositionPanel(category)
 
 	local sortDivider = mini:Divider({ Parent = panel, Text = "Sort" })
 	sortDivider:SetPoint("LEFT", panel, "LEFT")
-	sortDivider:SetPoint("RIGHT", panel, "RIGHT", -horizontalSpacing, 0)
+	sortDivider:SetPoint("RIGHT", panel, "RIGHT", 0, 0)
 	sortDivider:SetPoint("TOP", offsetX.Slider, "BOTTOM", 0, -verticalSpacing)
 
 	local sortMethodLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
@@ -984,7 +984,7 @@ function M:Init()
 
 	local sizeDivider = mini:Divider({ Parent = panel, Text = "Size & Count" })
 	sizeDivider:SetPoint("LEFT", panel, "LEFT")
-	sizeDivider:SetPoint("RIGHT", panel, "RIGHT", -horizontalSpacing, 0)
+	sizeDivider:SetPoint("RIGHT", panel, "RIGHT", 0, 0)
 	sizeDivider:SetPoint("TOP", sliderAnchor, "BOTTOM", 0, -verticalSpacing)
 
 	local iconSize = mini:Slider({
