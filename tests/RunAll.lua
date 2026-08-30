@@ -5,7 +5,7 @@
 -- Requirements: Lua 5.1. The shared harness lives in the build submodule, so a fresh clone
 -- needs `git submodule update --init` first.
 
-package.path = "build/Lua/?.lua;tests/?.lua;" .. package.path
+package.path = "build/Lua/?.lua;tests/Helpers/?.lua;tests/?.lua;" .. package.path
 
 io.write("MiniArenaDebuffs - unit tests\n")
 io.write("======================================\n")
@@ -15,6 +15,12 @@ local testFiles = {
 	"tests/TestArenaExit.lua",
 	"tests/TestMasque.lua",
 	"tests/TestIconStyle.lua",
+	"tests/TestMigrations.lua",
+	"tests/TestSpellFilter.lua",
+	"tests/TestAnchors.lua",
+	"tests/TestDisplayOptions.lua",
+	"tests/TestSecretAuras.lua",
+	"tests/TestDisplayEvents.lua",
 }
 
 local loadErrors = {}
