@@ -804,6 +804,9 @@ local function InitSpellFilterPanel(category)
 end
 
 function M:Init()
+	-- A styled button clashes with the stock Blizzard art around it in the settings screen.
+	mini:SetCustomStyling(true, { Button = false })
+
 	db = GetAndUpgradeDb()
 
 	local panel = CreateFrame("Frame")
@@ -964,6 +967,11 @@ function M:Init()
 		sliderAnchor = zoomIcons
 	end
 
+	local sizeDivider = mini:Divider({ Parent = panel, Text = "Size & Count" })
+	sizeDivider:SetPoint("LEFT", panel, "LEFT")
+	sizeDivider:SetPoint("RIGHT", panel, "RIGHT", -horizontalSpacing, 0)
+	sizeDivider:SetPoint("TOP", sliderAnchor, "BOTTOM", 0, -verticalSpacing)
+
 	local iconSize = mini:Slider({
 		Parent = panel,
 		Min = 10,
@@ -979,7 +987,7 @@ function M:Init()
 			ApplySettings()
 		end,
 	})
-	iconSize.Slider:SetPoint("TOPLEFT", sliderAnchor, "BOTTOMLEFT", 4, -verticalSpacing * 3)
+	iconSize.Slider:SetPoint("TOPLEFT", sizeDivider, "BOTTOMLEFT", 0, -verticalSpacing * 3)
 
 	local iconSpacing = mini:Slider({
 		Parent = panel,
@@ -1051,34 +1059,42 @@ function M:Init()
 		hideOnEscape = true,
 	}
 
-	local resetBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-	resetBtn:SetSize(120, 26)
+	local resetBtn = mini:Button({
+		Parent = panel,
+		Text = "Reset",
+		Width = 120,
+		Height = 26,
+		OnClick = function()
+			if InCombatLockdown() then
+				mini:NotifyCombatLockdown()
+				return
+			end
+
+			StaticPopup_Show("MINIAD_CONFIRM", "Are you sure you wish to reset to factory settings?", nil, {
+				OnYes = function()
+					db = mini:ResetSavedVars(dbDefaults)
+
+					panel:MiniRefresh()
+					addon:Refresh()
+					mini:NotifyWithPrefix("Settings reset to default.")
+				end,
+			})
+		end,
+	})
+
 	resetBtn:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -horizontalSpacing, -verticalSpacing)
-	resetBtn:SetText("Reset")
-	resetBtn:SetScript("OnClick", function()
-		if InCombatLockdown() then
-			mini:NotifyCombatLockdown()
-			return
-		end
 
-		StaticPopup_Show("MINIAD_CONFIRM", "Are you sure you wish to reset to factory settings?", nil, {
-			OnYes = function()
-				db = mini:ResetSavedVars(dbDefaults)
+	local testBtn = mini:Button({
+		Parent = panel,
+		Text = "Test",
+		Width = 120,
+		Height = 26,
+		OnClick = function()
+			addon:ToggleTest()
+		end,
+	})
 
-				panel:MiniRefresh()
-				addon:Refresh()
-				mini:NotifyWithPrefix("Settings reset to default.")
-			end,
-		})
-	end)
-
-	local testBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-	testBtn:SetSize(120, 26)
 	testBtn:SetPoint("RIGHT", resetBtn, "LEFT", -horizontalSpacing, 0)
-	testBtn:SetText("Test")
-	testBtn:SetScript("OnClick", function()
-		addon:ToggleTest()
-	end)
 
 	panel:SetScript("OnShow", function()
 		panel:MiniRefresh()
