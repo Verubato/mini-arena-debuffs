@@ -827,6 +827,18 @@ function M:Init()
 		},
 		Gap = 6,
 		Divider = true,
+		Reset = {
+			OnAccept = function()
+				if InCombatLockdown() then
+					mini:NotifyCombatLockdown()
+					return
+				end
+
+				db = mini:ResetSavedVars(dbDefaults)
+				addon:Refresh()
+				mini:NotifyWithPrefix("Settings reset to default.")
+			end,
+		},
 	})
 
 	local reverseSwipe = mini:Checkbox({
@@ -1042,50 +1054,6 @@ function M:Init()
 		end,
 	})
 	fontScale.Slider:SetPoint("LEFT", maxIcons.Slider, "RIGHT", horizontalSpacing * 2, 0)
-
-	StaticPopupDialogs["MINIAD_CONFIRM"] = {
-		text = "%s",
-		button1 = YES,
-		button2 = NO,
-		OnAccept = function(_, data)
-			if data and data.OnYes then
-				data.OnYes()
-			end
-		end,
-		OnCancel = function(_, data)
-			if data and data.OnNo then
-				data.OnNo()
-			end
-		end,
-		timeout = 0,
-		whileDead = true,
-		hideOnEscape = true,
-	}
-
-	local resetBtn = mini:Button({
-		Parent = panel,
-		Text = "Reset",
-		Width = 120,
-		Height = 26,
-		OnClick = function()
-			if InCombatLockdown() then
-				mini:NotifyCombatLockdown()
-				return
-			end
-
-			StaticPopup_Show("MINIAD_CONFIRM", "Are you sure you wish to reset to factory settings?", nil, {
-				OnYes = function()
-					db = mini:ResetSavedVars(dbDefaults)
-
-					panel:MiniRefresh()
-					addon:Refresh()
-					mini:NotifyWithPrefix("Settings reset to default.")
-				end,
-			})
-		end,
-	})
-
-	resetBtn:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -horizontalSpacing, -verticalSpacing)
 
 	local testBtn = mini:Button({
 		Parent = panel,
