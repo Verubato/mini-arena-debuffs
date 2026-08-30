@@ -1097,7 +1097,7 @@ function M:Init()
 		end,
 	})
 
-	testBtn:SetPoint("RIGHT", resetBtn, "LEFT", -horizontalSpacing, 0)
+	testBtn:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 0, verticalSpacing)
 
 	panel:SetScript("OnShow", function()
 		panel:MiniRefresh()
