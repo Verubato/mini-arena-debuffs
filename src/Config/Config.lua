@@ -237,6 +237,7 @@ local function InitPositionPanel(category)
 		Lines = {
 			"Where the icon row sits relative to each arena frame, and the order icons appear in.",
 		},
+		Divider = true,
 	})
 
 	local growLbl = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
@@ -622,6 +623,7 @@ local function InitSpellFilterPanel(category)
 			"Only Listed Spells shows just the spells below; All But Listed Spells hides them.",
 			"Adding a spell also adds every spell ID that applies an aura under the same name.",
 		},
+		Divider = true,
 	})
 
 	---The stored filter as an ordered id list plus a lookup set.
@@ -824,6 +826,7 @@ function M:Init()
 			"Shows your debuffs on arena frames.",
 		},
 		Gap = 6,
+		Divider = true,
 	})
 
 	local reverseSwipe = mini:Checkbox({

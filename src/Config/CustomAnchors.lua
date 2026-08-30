@@ -38,6 +38,7 @@ function M:Init(category)
 			"Useful for frame addons such as ElvUI or GladiusEx.",
 			"Leave blank to use the default arena frames.",
 		},
+		Divider = true,
 	})
 
 	local desc = header.Anchor
