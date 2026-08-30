@@ -827,6 +827,11 @@ function M:Init()
 		},
 		Gap = 6,
 		Divider = true,
+		Test = {
+			OnClick = function()
+				addon:ToggleTest()
+			end,
+		},
 		Reset = {
 			OnAccept = function()
 				if InCombatLockdown() then
@@ -1054,18 +1059,6 @@ function M:Init()
 		end,
 	})
 	fontScale.Slider:SetPoint("LEFT", maxIcons.Slider, "RIGHT", horizontalSpacing * 2, 0)
-
-	local testBtn = mini:Button({
-		Parent = panel,
-		Text = "Test",
-		Width = 120,
-		Height = 26,
-		OnClick = function()
-			addon:ToggleTest()
-		end,
-	})
-
-	testBtn:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 0, verticalSpacing)
 
 	panel:SetScript("OnShow", function()
 		panel:MiniRefresh()
