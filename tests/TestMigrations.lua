@@ -43,9 +43,7 @@ fw.describe("MiniArenaDebuffs - saved variable upgrades", function()
 		fw.is_nil(db.Rows, "so is the row count")
 	end)
 
-	-- Asserting what the code does today, not what it should. The defaults are merged in
-	-- before the first step runs, so Anchor and MaxIcons already exist.
-	fw.it("drops a version three profile's anchor offset, icon count, and grow direction", function()
+	fw.it("carries a version three profile's anchor offset, icon count, and grow direction forward", function()
 		local db = Upgrade({
 			Version = 3,
 			IconsPerRow = 4,
@@ -53,13 +51,11 @@ fw.describe("MiniArenaDebuffs - saved variable upgrades", function()
 			SimpleMode = { Enabled = true, Offset = { X = 10, Y = 20 } },
 		})
 
-		fw.eq(db.MaxIcons, 6, "IconsPerRow never reaches MaxIcons")
-		fw.is_nil(db.IconsPerRow, "and is dropped as an unknown key")
-		fw.eq(db.Anchor.Offset.X, 0, "the offset the player had set is dropped")
-		fw.eq(db.Anchor.Offset.Y, 0, "both halves of it")
-		-- The cleaning pass that ends this step strips GrowDirection before the version four
-		-- step ever reads it.
-		fw.eq(db.Grow, "RIGHT", "the grow direction the player chose is dropped too")
+		fw.eq(db.MaxIcons, 4, "the icon count moved to its new key")
+		fw.is_nil(db.IconsPerRow, "the old key is gone")
+		fw.eq(db.Anchor.Offset.X, 10, "the offset the player had set carried over")
+		fw.eq(db.Anchor.Offset.Y, 20, "both halves of it")
+		fw.eq(db.Grow, "LEFT", "and so did the grow direction")
 	end)
 
 	fw.it("renames the grow direction and drops the anchor points, keeping the offset", function()
@@ -118,50 +114,25 @@ fw.describe("MiniArenaDebuffs - saved variable upgrades", function()
 		fw.eq(db.Version, CURRENT_VERSION, "stamped current")
 	end)
 
-	-- Asserting what the code does today. The offset is lost, not carried forward, the same
-	-- way the neighbouring bug-pinning tests above are.
-	fw.it("takes a version one profile all the way without leaving its own tables behind", function()
-		local db = Upgrade({ Version = 1, SimpleMode = { Enabled = false, Offset = { X = 9, Y = 9 } } })
+	fw.it("takes a version one profile all the way and keeps the offset it held", function()
+		local db = Upgrade({ Version = 1, SimpleMode = { Offset = { X = 9, Y = 9 } } })
 
 		fw.eq(db.Version, CURRENT_VERSION, "upgraded the whole way")
 		fw.is_nil(db.SimpleMode, "the version one mode table is gone")
-		fw.eq(db.Anchor.Offset.X, 0, "and the offset it held is lost with it")
+		fw.eq(db.Anchor.Offset.X, 9, "its offset reached the anchor")
 	end)
 
-	-- v1 -> v2 writes SimpleMode.Enabled, then the CleanTable call at the end of the very same
-	-- step deletes SimpleMode entirely, since it is not a key the current defaults carry. The
-	-- offset is gone before the version three to four step ever gets a look at it.
-	fw.it("erases the version one mode table in the same step that just wrote to it", function()
-		local context = harness.Load("MiniArenaDebuffs")
-		local framework = context.Addon.Framework
-		local originalCleanTable = framework.CleanTable
-		local captured = false
-		local sawSimpleMode
+	fw.it("does not resurrect the offset of a version one mode the profile says was off", function()
+		local db = Upgrade({ Version = 1, SimpleMode = { Enabled = false, Offset = { X = 9, Y = 9 } } })
 
-		function framework:CleanTable(target, template, cleanValues, recurse)
-			if not captured and target.SimpleMode then
-				captured = true
-				sawSimpleMode = target.SimpleMode
-			end
-			return originalCleanTable(self, target, template, cleanValues, recurse)
-		end
-
-		_G.MiniArenaDebuffsDB = { Version = 1, SimpleMode = { Enabled = false, Offset = { X = 9, Y = 9 } } }
-		harness.Login(context)
-		local db = _G.MiniArenaDebuffsDB
-
-		fw.eq(sawSimpleMode.Enabled, true, "the step's own write reached the table")
-		fw.eq(sawSimpleMode.Offset.X, 9, "and the offset was still there to read")
-		fw.is_nil(db.SimpleMode, "but the same step's cleanup erased it right after")
+		fw.eq(db.Anchor.Offset.X, 0, "the offset of a mode that was off stays behind")
 	end)
 
-	-- Asserting what the code does today. The defaults stamp the current version in before the
-	-- first step reads it, so `not vars.Version` can never be true and nothing runs.
-	fw.it("runs no step at all for a profile that carries no version", function()
+	fw.it("runs the whole chain for a profile that carries no version", function()
 		local db = Upgrade({ Anchor1 = "CompactArenaFrameMember1" })
 
-		fw.eq(db.Version, CURRENT_VERSION, "stamped current without a single step running")
-		fw.eq(db.Anchor1, "CompactArenaFrameMember1", "the step that would have cleared this never ran")
+		fw.eq(db.Version, CURRENT_VERSION, "stamped current")
+		fw.eq(db.Anchor1, "", "the step that clears a default-named override ran")
 	end)
 
 	fw.it("carries every setting the player chose across the whole chain", function()
@@ -194,5 +165,41 @@ fw.describe("MiniArenaDebuffs - saved variable upgrades", function()
 		fw.eq(db.Version, CURRENT_VERSION, "still current")
 		fw.eq(db.MaxIcons, 4, "settings untouched")
 		fw.eq(db.Icons.Size, 20, "including nested ones")
+	end)
+
+	fw.it("leaves a profile stamped ahead of this build alone", function()
+		local db = Upgrade({ Version = 99, MaxIcons = 4, FutureKey = "keep" })
+
+		fw.eq(db.Version, 99, "the stamp a newer build wrote is kept")
+		fw.eq(db.MaxIcons, 4, "so are the settings beside it")
+		fw.eq(db.FutureKey, "keep", "including a key this build knows nothing about")
+	end)
+
+	fw.it("leaves a profile whose version this build cannot step alone", function()
+		local db = Upgrade({ Version = "9", MaxIcons = 3 })
+
+		fw.eq(db.Version, "9", "the stamp is left as it was found")
+		fw.eq(db.MaxIcons, 3, "and the settings beside it")
+	end)
+
+	fw.it("runs no step at all for a brand new profile", function()
+		-- The end state is the same either way, so counting the cleanups is what shows the
+		-- chain was skipped.
+		local context = harness.Load("MiniArenaDebuffs")
+		local framework = context.Addon.Framework
+		local originalCleanTable = framework.CleanTable
+		local cleans = 0
+
+		function framework:CleanTable(target, template, cleanValues, recurse)
+			cleans = cleans + 1
+			return originalCleanTable(self, target, template, cleanValues, recurse)
+		end
+
+		_G.MiniArenaDebuffsDB = nil
+		harness.Login(context)
+		local db = _G.MiniArenaDebuffsDB
+
+		fw.eq(cleans, 0, "nothing was cleaned")
+		fw.eq(db.Version, CURRENT_VERSION, "stamped current")
 	end)
 end)

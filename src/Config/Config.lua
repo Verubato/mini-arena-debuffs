@@ -74,15 +74,39 @@ local M = {
 
 addon.Config = M
 
+-- A stored version can be any value a hand-edited file holds, so it is checked before it is compared.
+local function CanMigrate(version)
+	if version == nil then
+		return true
+	end
+
+	return type(version) == "number" and version % 1 == 0 and version >= 1 and version <= dbDefaults.Version
+end
+
 local function GetAndUpgradeDb()
-	local vars = mini:GetSavedVars(dbDefaults)
+	-- Read before any fetch, because a bare GetSavedVars publishes an empty table to the global.
+	local isFirstLogin = _G[addonName .. "DB"] == nil
+
+	if isFirstLogin then
+		return mini:GetSavedVars(dbDefaults)
+	end
+
+	-- Unmerged, so each step branches on the version the profile was actually saved at.
+	local vars = mini:GetSavedVars()
+
+	if not CanMigrate(vars.Version) then
+		return mini:GetSavedVars(dbDefaults)
+	end
 
 	-- v1 -> v2
 	if not vars.Version or vars.Version == 1 then
 		vars.SimpleMode = vars.SimpleMode or {}
-		vars.SimpleMode.Enabled = true
+
+		if vars.SimpleMode.Enabled == nil then
+			vars.SimpleMode.Enabled = true
+		end
+
 		vars.Version = 2
-		mini:CleanTable(vars, dbDefaults, true, true)
 	end
 
 	-- v2 -> v3: clear default anchor overrides
@@ -140,7 +164,6 @@ local function GetAndUpgradeDb()
 		vars.GrowDirection = vars.GrowDirection or "RIGHT"
 
 		vars.Version = 4
-		mini:CleanTable(vars, dbDefaults, true, true)
 	end
 
 	-- v4 -> v5: rename GrowDirection -> Grow; remove Anchor.Point/RelativePoint
@@ -152,7 +175,6 @@ local function GetAndUpgradeDb()
 			vars.Anchor.RelativePoint = nil
 		end
 		vars.Version = 5
-		mini:CleanTable(vars, dbDefaults, true, true)
 	end
 
 	-- v5 -> v6: the pandemic border and glow drew the same cue, so they are one option now. The
@@ -163,7 +185,6 @@ local function GetAndUpgradeDb()
 			vars.Icons.PandemicBorder = nil
 		end
 		vars.Version = 6
-		mini:CleanTable(vars, dbDefaults, true, true)
 	end
 
 	-- v6 -> v7: 12.0 is gone, and with it desaturating on pandemic, which needed the aura's own
@@ -173,8 +194,13 @@ local function GetAndUpgradeDb()
 			vars.Icons.PandemicDesaturate = nil
 		end
 		vars.Version = 7
-		mini:CleanTable(vars, dbDefaults, true, true)
 	end
+
+	vars = mini:GetSavedVars(dbDefaults)
+
+	-- One cleanup after the whole chain, so a step can write a key that a later step reads and the
+	-- current defaults no longer carry.
+	mini:CleanTable(vars, dbDefaults, true, true)
 
 	return vars
 end
