@@ -1,5 +1,12 @@
 # Changelog
 
+## 5.0.4
+
+- Fixed resetting to defaults not fully refreshing the saved settings.
+- Settings from a newer version that this build cannot read are now refused instead of being partly applied.
+
+Updated for patch 12.1.5.
+
 ## 5.0.3
 
 UI improvements.

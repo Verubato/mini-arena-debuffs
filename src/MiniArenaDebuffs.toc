@@ -1,9 +1,9 @@
-## Interface: 120100
+## Interface: 120105, 120100
 ## Title: MiniArenaDebuffs
 ## Notes: Shows debuffs on arena frames.
 ## Category: Mini
 ## Author: Verz
-## Version: 5.0.3
+## Version: 5.0.4
 ## SavedVariables: MiniArenaDebuffsDB
 ## OptionalDeps: Masque, sArena_Reloaded
 ## IconTexture: Interface\AddOns\MiniArenaDebuffs\Icon.blp

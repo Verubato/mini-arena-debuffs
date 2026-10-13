@@ -1,6 +1,6 @@
 # MiniArenaDebuffs - Support Reference
 
-Accurate as of addon version 5.0.3. Everything below is derived from the addon source.
+Accurate as of addon version 5.0.4. Everything below is derived from the addon source.
 
 ## What the addon does
 
@@ -16,8 +16,8 @@ Affliction/Agony/Corruption/Wither, Moonfire/Sunfire, Shadow Priest and Unholy D
 
 | Item | Value |
 |---|---|
-| Addon version | 5.0.2 |
-| Supported interface version | 120100 (12.1), i.e. WoW Midnight |
+| Addon version | 5.0.4 |
+| Supported interface version | 120105 (12.1.5) and 120100 (12.1), i.e. WoW Midnight |
 | Saved variables | MiniArenaDebuffsDB (account-wide, shared by all characters) |
 | Optional dependencies | Masque, sArena_Reloaded |
 | Slash commands | /miniarenadebuffs and /miniad |
